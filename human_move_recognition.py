@@ -139,28 +139,60 @@ def line_detector(image, canny_image):
 
     return result_image
 
-def grid_search(canny_image, chess_nodes, numb_pieces):
+def determine_color(square_index):
+    # Calculate the row and column of the square
+    row = square_index // 8
+    col = square_index % 8
+
+    # Determine the color based on the row and column
+    if (row % 2 == 0 and col % 2 == 0) or (row % 2 == 1 and col % 2 == 1):
+        return 'Black'
+    else:
+        return 'White'
+
+def grid_search(image, canny_image, chess_nodes, numb_pieces):
     last_valid_node, next_row = 71, 9
-    grid_occupied = []
+    grid_canny_occupied = []
+    grid_binary_occupied = []
+
     for i in range(last_valid_node):
         if i % next_row != 8: #cant have last column or last row
-            square = canny_image[chess_nodes[i][1]:chess_nodes[i + next_row][1], chess_nodes[i][0]:chess_nodes[i + 1][0]]   
-            white_pixels = np.count_nonzero(square == 255) 
+
+            # Canny Array
+            square = canny_image[chess_nodes[i][1]:chess_nodes[i + next_row][1], chess_nodes[i][0]:chess_nodes[i + 1][0]] 
+            white_canny_pixels = np.count_nonzero(square == 255) 
             total_pixels = square.size 
-            white_ratio = (white_pixels / total_pixels) * 100
-            grid_occupied.append(white_ratio)
+            white_canny_ratio = (white_canny_pixels / total_pixels) * 100
+            grid_canny_occupied.append(white_canny_ratio)
 
-    output_array = [0]*len(grid_occupied)
-    sorted_input = sorted(grid_occupied)
+            # Thresholding Array
+            binary_square = image[chess_nodes[i][1]:chess_nodes[i + next_row][1], chess_nodes[i][0]:chess_nodes[i + 1][0]]   
+            grey_square = cv2.cvtColor(binary_square, cv2.COLOR_BGR2GRAY) 
+            if determine_color(i) == 'Black': # black square
+                threshold = 65
+            elif determine_color(i) == 'White': # white square
+                threshold = 185 
+            
+            _, binary_image = cv2.threshold(grey_square, threshold, 255, cv2.THRESH_BINARY)
+            total_pixels = binary_image.size
+            white_pixels = np.count_nonzero(binary_image == 255)
+            black_pixels = np.count_nonzero(binary_image == 0)
+            white_percentage = white_pixels/total_pixels*100
+            black_percentage = black_pixels/total_pixels*100
+            total = (white_percentage, black_percentage)
+            grid_binary_occupied.append(total)
 
+
+    output_array = [0]*len(grid_canny_occupied)
+    sorted_input = sorted(grid_canny_occupied)
     threshold = sorted_input[numb_pieces] # Only keep the highest numbers (# of pieces)
-    for i in range(len(grid_occupied)):
-        if grid_occupied[i] >= threshold:
-            output_array[i] = grid_occupied[i]
+    for i in range(len(grid_canny_occupied)):
+        if grid_canny_occupied[i] >= threshold:
+            output_array[i] = grid_canny_occupied[i]
         else:
             output_array[i] = 0
 
-    return output_array
+    return output_array, grid_binary_occupied
 
 def create_map():
     chessboard_size = 8
@@ -212,7 +244,7 @@ def start_end_moves(img_start, img_end, all_nodes, board):
     starting_position_canny = cv2.Canny(starting_position_roi, 125, 175)
 
     result_image = line_detector(starting_position_roi, starting_position_canny)
-    grid_occupied = grid_search(result_image, all_nodes, numb_pieces)
+    grid_canny_occupied_start, grid_binary_occupied_start = grid_search(starting_position_roi, result_image, all_nodes, numb_pieces)
 
     end_position_roi = resize(img_end, 15)
     end_position_canny = cv2.Canny(end_position_roi, 125, 175)
@@ -221,10 +253,10 @@ def start_end_moves(img_start, img_end, all_nodes, board):
     # cv2.imshow(f"Move {game_move + 1}", img_end)
 
     result_image_end = line_detector(end_position_roi, end_position_canny)
-    grid_occupied_end = grid_search(result_image_end, all_nodes, numb_pieces)
+    grid_occupied_canny_end, grid_binary_occupied_end = grid_search(end_position_roi, result_image_end, all_nodes, numb_pieces)
 
     game_move = game_move + 1
-    move = find_move(grid_occupied, grid_occupied_end)
+    move = find_move(grid_canny_occupied_start, grid_occupied_canny_end)
     move_uci = chess.Move.from_uci(move)
 
     if move_uci in board.legal_moves:
