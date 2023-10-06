@@ -108,9 +108,9 @@ if __name__ == "__main__":
     
     print(thing1)
     print(thing1[38], thing1[36], average1, median1)
-    # print()
-    # print(thing2)
-    # print(thing2[33], thing2[35], average2, median2) 
+    print()
+    print(thing2)
+    print(thing2[33], thing2[35], average2, median2) 
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()

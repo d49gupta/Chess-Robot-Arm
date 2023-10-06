@@ -244,9 +244,6 @@ def find_move(start_canny, end_canny, binary_diff, mean_diff, binary_average, me
                 if end_canny[j] > 0 and start_canny[j] == 0:
                     move = map[i] + map[j]
 
-        # Capture
-        # Short/Long Castle
-        # En Passant
     return move
 
 def calibration():
