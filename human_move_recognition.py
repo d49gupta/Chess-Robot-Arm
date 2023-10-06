@@ -128,7 +128,7 @@ def line_detector(image, canny_image):
     if lines is not None:
         for line in lines:
             x1, y1, x2, y2 = map(int, line[0])
-            cv2.line(output_image, (x1, y1), (x2, y2), (255, 255, 255), 2)
+            cv2.line(output_image, (x1, y1), (x2, y2), (255, 255, 255), 3)
     # cv2.imshow('Image with Detected Lines', output_image)
 
     result_image = np.zeros_like(canny_image) # Black image
@@ -150,10 +150,11 @@ def determine_color(square_index):
     else:
         return 'White'
 
-def grid_search(image, canny_image, chess_nodes, numb_pieces):
+def grid_search(image, canny_image, chess_nodes):
     last_valid_node, next_row = 71, 9
     grid_canny_occupied = []
     grid_binary_occupied = []
+    mean_occupied = []
 
     for i in range(last_valid_node):
         if i % next_row != 8: #cant have last column or last row
@@ -161,8 +162,8 @@ def grid_search(image, canny_image, chess_nodes, numb_pieces):
             # Canny Array
             square = canny_image[chess_nodes[i][1]:chess_nodes[i + next_row][1], chess_nodes[i][0]:chess_nodes[i + 1][0]] 
             white_canny_pixels = np.count_nonzero(square == 255) 
-            total_pixels = square.size 
-            white_canny_ratio = (white_canny_pixels / total_pixels) * 100
+            total_canny_pixels = square.size 
+            white_canny_ratio = (white_canny_pixels / total_canny_pixels) * 100
             grid_canny_occupied.append(white_canny_ratio)
 
             # Thresholding Array
@@ -174,25 +175,51 @@ def grid_search(image, canny_image, chess_nodes, numb_pieces):
                 threshold = 185 
             
             _, binary_image = cv2.threshold(grey_square, threshold, 255, cv2.THRESH_BINARY)
-            total_pixels = binary_image.size
+            total_binary_pixels = binary_image.size
             white_pixels = np.count_nonzero(binary_image == 255)
             black_pixels = np.count_nonzero(binary_image == 0)
-            white_percentage = white_pixels/total_pixels*100
-            black_percentage = black_pixels/total_pixels*100
+            white_percentage = white_pixels/total_binary_pixels*100
+            black_percentage = black_pixels/total_binary_pixels*100
             total = (white_percentage, black_percentage)
             grid_binary_occupied.append(total)
 
-
+            # Mean array
+            mean_color = np.mean(grey_square, axis=(0, 1))
+            mean_occupied.append(mean_color)
+        
     output_array = [0]*len(grid_canny_occupied)
-    sorted_input = sorted(grid_canny_occupied)
-    threshold = sorted_input[numb_pieces] # Only keep the highest numbers (# of pieces)
+    sorted_input = sorted(grid_canny_occupied, reverse=True)
+    threshold = sorted_input[numb_pieces] # Only keep the highest numbers (# of pieces + 2 gives room for error)
+     
     for i in range(len(grid_canny_occupied)):
         if grid_canny_occupied[i] >= threshold:
             output_array[i] = grid_canny_occupied[i]
         else:
             output_array[i] = 0
 
-    return output_array, grid_binary_occupied
+    return output_array, grid_binary_occupied, mean_occupied
+
+def determineBoardPosition(binary_start, mean_start, binary_end, mean_end):
+    
+    mean_arr = []
+    for i in range(len(mean_start)):
+        diff = abs(mean_start[i] - mean_end[i])
+        mean_arr.append(diff)
+
+    sorted_mean = sorted(mean_arr, reverse=True)
+    median_mean = sorted_mean[15]
+
+    binary_arr = []
+    for i in range(len(binary_start)):
+        result = tuple(x - y for x, y in zip(binary_start[i], binary_end[i])) 
+        binary_arr.append(result) #result[0] = -result[1] since percentage has to sum to 100%
+
+    binary_sum = 0
+    for i in range(len(binary_arr)):
+        binary_sum += abs(binary_arr[i][0])
+    average_binary = binary_sum/len(binary_arr)
+
+    return mean_arr, binary_arr, median_mean, average_binary
 
 def create_map():
     chessboard_size = 8
@@ -205,6 +232,7 @@ def create_map():
 
     return index_to_chess_position
 
+# def find_move(start_canny, end_canny, binary_diff, mean_diff, binary_average, mean_median):
 def find_move(start_occupied, end_occupied):
     map = create_map()
     move = "Move Not Found"
@@ -217,9 +245,6 @@ def find_move(start_occupied, end_occupied):
                 if end_occupied[j] > 0 and start_occupied[j] == 0:
                     move = map[i] + map[j]
 
-        # Capture
-        # Short/Long Castle
-        # En Passant
     return move
 
 def calibration():
@@ -242,32 +267,30 @@ def start_end_moves(img_start, img_end, all_nodes, board):
 
     starting_position_roi = resize(img_start, 15)
     starting_position_canny = cv2.Canny(starting_position_roi, 125, 175)
-
-    result_image = line_detector(starting_position_roi, starting_position_canny)
-    grid_canny_occupied_start, grid_binary_occupied_start = grid_search(starting_position_roi, result_image, all_nodes, numb_pieces)
+    result_image_start = line_detector(starting_position_roi, starting_position_canny)
+    grid_canny_occupied_start, grid_binary_occupied_start, mean_occupied_start = grid_search(starting_position_roi, result_image_start, all_nodes)
 
     end_position_roi = resize(img_end, 15)
     end_position_canny = cv2.Canny(end_position_roi, 125, 175)
-    
-    # cv2.imshow(f"Move {game_move}", img_start)
-    # cv2.imshow(f"Move {game_move + 1}", img_end)
-
     result_image_end = line_detector(end_position_roi, end_position_canny)
-    grid_occupied_canny_end, grid_binary_occupied_end = grid_search(end_position_roi, result_image_end, all_nodes, numb_pieces)
+    grid_occupied_canny_end, grid_binary_occupied_end, mean_occupied_end = grid_search(end_position_roi, result_image_end, all_nodes)
 
-    game_move = game_move + 1
+    mean_arr, binary_arr, mean_median, binary_average = determineBoardPosition(grid_binary_occupied_start, mean_occupied_start, grid_binary_occupied_end, mean_occupied_end)
+    # move = find_move(grid_canny_occupied_start, grid_occupied_canny_end, binary_arr, mean_arr, binary_average, mean_median)
     move = find_move(grid_canny_occupied_start, grid_occupied_canny_end)
-    move_uci = chess.Move.from_uci(move)
+    print(move)
+    game_move = game_move + 1
 
-    if move_uci in board.legal_moves:
-        board.push(move_uci)
-        if board.is_check():
-            print(print(f"Move {game_move}: {move}, You are in Check!"))
-        else:
-            print(f"Move {game_move}: {move}")
-        print(board)
+    # move_uci = chess.Move.from_uci(move)
+    # if move_uci in board.legal_moves:
+    #     board.push(move_uci)
+    #     if board.is_check():
+    #         print(print(f"Move {game_move}: {move}, You are in Check!"))
+    #     else:
+    #         print(f"Move {game_move}: {move}")
+    #     print(board)
 
-    return board
+    # return board
 
 if __name__ == "__main__":
     all_nodes, board, game_move, numb_pieces = calibration()
@@ -290,22 +313,23 @@ if __name__ == "__main__":
     move.append(move6)
 
     for i in range(len(move) - 1):
-        if board.is_checkmate() == True:
-            if game_move % 2 == 1:
-                print("Black Wins!")
-            if game_move % 2 == 0:
-                print("White Wins!")
-            break
+        # if board.is_checkmate() == True:
+        #     if game_move % 2 == 1:
+        #         print("Black Wins!")
+        #     if game_move % 2 == 0:
+        #         print("White Wins!")
+        #     break
 
-        if board.is_stalemate() == True:
-            print("The Game is a Stalemate!")
-            break
+        # if board.is_stalemate() == True:
+        #     print("The Game is a Stalemate!")
+        #     break
 
-        if board.is_fivefold_repetition() == True or board.is_seventyfive_moves() == True:
-            print("The Game is a Draw!")
-            break
+        # if board.is_fivefold_repetition() == True or board.is_seventyfive_moves() == True:
+        #     print("The Game is a Draw!")
+        #     break
 
-        board = start_end_moves(move[i], move[i+1], all_nodes, board)
+        # board = start_end_moves(move[i], move[i+1], all_nodes, board)
+        start_end_moves(move[i], move[i+1], all_nodes, board)
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()

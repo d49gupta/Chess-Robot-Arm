@@ -20,16 +20,18 @@ def determine_color(square_index):
 def grid_search(image, chess_nodes):
     last_valid_node, next_row = 71, 9
     grid_occupied = []
+    arr = []
     for i in range(last_valid_node):
         if i % next_row != 8: #cant have last column or last row
             square = image[chess_nodes[i][1]:chess_nodes[i + next_row][1], chess_nodes[i][0]:chess_nodes[i + 1][0]]   
             grey_square = cv2.cvtColor(square, cv2.COLOR_BGR2GRAY)
 
-            if determine_color(i) == 'Black': # black square
-                threshold = 65
-            elif determine_color(i) == 'White': # white square
-                threshold = 185 
+            # if determine_color(i) == 'Black': # black square
+            #     threshold = 60
+            # elif determine_color(i) == 'White': # white square
+            #     threshold = 135
 
+            threshold = 55
             _, binary_image = cv2.threshold(grey_square, threshold, 255, cv2.THRESH_BINARY)
             # cv2.imshow('Original image', square)
             # cv2.imshow("binary image", binary_image)
@@ -41,11 +43,12 @@ def grid_search(image, chess_nodes):
             black_percentage = black_pixels/total_pixels*100
 
             total = (white_percentage, black_percentage)
+            arr.append(total)
 
-            # if (white_percentage >= threshold):
-            grid_occupied.append(total)
+            mean_color = np.mean(grey_square, axis=(0, 1))
+            grid_occupied.append(mean_color)
 
-    return grid_occupied
+    return grid_occupied, arr
 
 def detect_changes(initial_image, current_image):
     # Convert images to grayscale for subtraction
@@ -70,10 +73,44 @@ if __name__ == "__main__":
     image = resize(img, 15)
     all_nodes = find_exterior_corners(image)
 
-    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\starting_position.jpg')
+    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\first_move.jpg')
     image_start = resize(img, 15)
-    grid_occupied = grid_search(image_start, all_nodes)
-    print(grid_occupied)
+    grid_occupied1, binary1 = grid_search(image_start, all_nodes)
+
+
+    img2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\second_move.jpg')
+    image_end = resize(img2, 15)
+    grid_occupied2, binary2 = grid_search(image_end, all_nodes)
+
+    thing1 = []
+    for i in range(len(grid_occupied1)):
+        diff = abs(grid_occupied1[i] - grid_occupied2[i])
+        thing1.append(diff)
+    average1 = sum(thing1) / len(thing1)
+
+    output_array = [0]*len(thing1)
+    sorted_input = sorted(thing1, reverse=True)
+    median1 = sorted_input[9]
+
+    thing2 = []
+    for i in range(len(binary1)):
+        result = tuple(x - y for x, y in zip(binary1[i], binary2[i])) 
+        thing2.append(result) #result[0] = -result[1] since percentage has to sum to 100%
+
+    sum = 0
+    for i in range(len(thing2)):
+        sum += abs(thing2[i][0])
+    average2 = sum/len(thing2)
+
+    output_array1 = [0]*len(thing2)
+    sorted_input1 = sorted(thing2, reverse=True)
+    median2 = sorted_input1[9]
+    
+    print(thing1)
+    print(thing1[38], thing1[36], average1, median1)
+    # print()
+    # print(thing2)
+    # print(thing2[33], thing2[35], average2, median2) 
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
