@@ -224,27 +224,65 @@ def determineBoardPosition(binary_start, mean_start, binary_end, mean_end):
 
 def create_map():
     chessboard_size = 8
-    index_to_chess_position = []
+    index_to_chess_position = {}
 
     for row in range(chessboard_size):
         for col in range(chessboard_size):
-            chess_position = chr(ord('a') + row) + str(col + 1) # Convert row and column to chess notation (a1, a2, b1, etc.)
-            index_to_chess_position.append(chess_position)
+            chess_position = chr(ord('a') + row) + str(col + 1)  # Convert row and column to chess notation (a1, a2, b1, etc.)
+            index_to_chess_position[len(index_to_chess_position)] = chess_position
 
     return index_to_chess_position
 
-def find_move(start_canny, end_canny, binary_diff, mean_diff, binary_average, mean_median):
+def find_key_by_value(dictionary, target_value):
+    for key, value in dictionary.items():
+        if value == target_value:
+            return key
+    return None  
+
+def find_valid_moves(start_canny, end_canny, mean_diff, mean_median, board):
     map = create_map()
-    move = "Move Not Found"
-    global numb_pieces
+    current_valid_moves = []
+    all_valid_moves = list(board.legal_moves)
 
     for i in range(len(start_canny)):
         if start_canny[i] > 0 and end_canny[i] == 0 and mean_diff[i] > mean_median:
-            for j in range(len(end_canny)):
-                if end_canny[j] > 0 and start_canny[j] == 0:
-                    move = map[i] + map[j]
+            start_move = map[i]
 
-    return move
+            for j in range(len(map)):
+                if map[j] != start_move:
+                    potential_move = start_move + map[j]
+                    move_uci = chess.Move.from_uci(potential_move)
+
+                    if move_uci in all_valid_moves:
+                        valid_move = (start_move, map[j])
+                        current_valid_moves.append(valid_move)
+
+    return current_valid_moves
+
+def find_move(start_canny, end_canny, mean_diff, mean_median, binary_diff, binary_average, valid_moves):
+    chess_map = create_map()
+    detected_move = 0
+    capture = False
+
+    for i in valid_moves:
+        chess_index_start = find_key_by_value(chess_map, i[0])
+        chess_index_end = find_key_by_value(chess_map, i[1])
+
+        # Capture
+        # if abs(binary_diff[chess_index_end][0]) >= binary_average:
+        #     if binary_diff[chess_index_end][0] > 0 and binary_diff[chess_index_start][0] < 0 or binary_diff[chess_index_end][0] < 0 and binary_diff[chess_index_start][0] > 0:
+        #         detected_move = i[0] + i[1]
+
+    # Normal Move
+    if capture == False:
+        for i in valid_moves:
+            chess_index_start = find_key_by_value(chess_map, i[0])
+            chess_index_end = find_key_by_value(chess_map, i[1])
+
+            if end_canny[chess_index_end] > 0 and start_canny[chess_index_end] == 0: 
+                detected_move = i[0] + i[1]
+
+    return detected_move
 
 def calibration():
     img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\emptyBoard.jpg')
@@ -277,16 +315,13 @@ def start_end_moves(img_start, img_end, all_nodes, board):
     mean_arr, binary_arr, mean_median, binary_average = determineBoardPosition(binary_start, mean_start, binary_end, mean_end)
 
     game_move = game_move + 1
-    move = find_move(grid_occupied_start, grid_occupied_end, binary_arr, mean_arr, binary_average, mean_median)
-    move_uci = chess.Move.from_uci(move)
-
-    if move_uci in board.legal_moves:
-        board.push(move_uci)
-        if board.is_check():
-            print(print(f"Move {game_move}: {move}, You are in Check!"))
-        else:
-            print(f"Move {game_move}: {move}")
-        print(board)
+    valid_moves = find_valid_moves(grid_occupied_start, grid_occupied_end, mean_arr, mean_median, board)
+    print(valid_moves)
+    detected_move = find_move(grid_occupied_start, grid_occupied_end, mean_arr, mean_median, binary_arr, binary_average, valid_moves)
+    print(detected_move)
+    
+    deteceted_move_uci = chess.Move.from_uci(detected_move)
+    board.push(deteceted_move_uci)
 
     return board
 
@@ -325,7 +360,13 @@ if __name__ == "__main__":
         if board.is_fivefold_repetition() == True or board.is_seventyfive_moves() == True:
             print("The Game is a Draw!")
             break
-
+        
+        # if board.is_check():
+        #     print(print(f"Move {game_move}: {move}, You are in Check!"))
+        # else:
+        #     print(f"Move {game_move}: {move}")
+        
+        # print(board)
         board = start_end_moves(move[i], move[i+1], all_nodes, board)
 
     cv2.waitKey(0)
