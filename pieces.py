@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import chess
 from chessboard import display
+import sys
 global game_move
 global numb_pieces
 
@@ -307,6 +308,7 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
         board.push(detected_move_uci)
     else:
         print("Move not Found")
+        sys.exit()
 
     return detected_move, numb_pieces
 
@@ -342,11 +344,9 @@ def start_end_moves(img_start, img_end, all_nodes, board):
 
     game_move = game_move + 1
     start_move, valid_moves = find_valid_moves(grid_occupied_start, grid_occupied_end, mean_arr, mean_median, board)
-    print(valid_moves)
     detected_move, numb_pieces = find_move(grid_occupied_start, grid_occupied_end, binary_start, binary_end, valid_moves, board, start_move, numb_pieces)
-    print(detected_move)
     
-    return board
+    return detected_move, board
 
 if __name__ == "__main__":
     all_nodes, board, game_move, numb_pieces = calibration()
@@ -384,13 +384,14 @@ if __name__ == "__main__":
             print("The Game is a Draw!")
             break
         
-        # if board.is_check():
-        #     print(print(f"Move {game_move}: {move}, You are in Check!"))
-        # else:
-        #     print(f"Move {game_move}: {move}")
+        detected_move, board = start_end_moves(move[i], move[i+1], all_nodes, board)
         
-        # print(board)
-        board = start_end_moves(move[i], move[i+1], all_nodes, board)
+        print("---------------------------------------------------------------")
+        if board.is_check():
+            print(print(f"Move {game_move}: {detected_move}, You are in Check!"))
+        else:
+            print(f"Move {game_move}: {detected_move}")
+        print(board)
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
