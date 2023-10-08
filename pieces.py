@@ -3,7 +3,7 @@ import numpy as np
 import chess
 from chessboard import display
 global game_move
-# global numb_pieces
+global numb_pieces
 
 
 def resize(img, scale):
@@ -170,8 +170,11 @@ def grid_search(image, canny_image, chess_nodes, numb_pieces):
             black_pixels = np.count_nonzero(binary_image == 0)
             white_percentage = white_pixels/total_binary_pixels*100
             black_percentage = black_pixels/total_binary_pixels*100
-            total = (white_percentage, black_percentage)
-            grid_binary_occupied.append(total)
+
+            if white_percentage >= black_percentage:
+                grid_binary_occupied.append('White')
+            elif black_percentage > white_percentage:
+                grid_binary_occupied.append('Black')
 
             # Mean array
             mean_color = np.mean(grey_square, axis=(0, 1))
@@ -201,7 +204,7 @@ def determine_color(square_index):
     else:
         return 'White'
 
-def determineBoardPosition(binary_start, mean_start, binary_end, mean_end):
+def determineBoardPosition(mean_start, mean_end):
     mean_arr = []
     for i in range(len(mean_start)):
         diff = abs(mean_start[i] - mean_end[i])
@@ -210,17 +213,17 @@ def determineBoardPosition(binary_start, mean_start, binary_end, mean_end):
     sorted_mean = sorted(mean_arr, reverse=True)
     median_mean = sorted_mean[15]
 
-    binary_arr = []
-    for i in range(len(binary_start)):
-        result = tuple(x - y for x, y in zip(binary_start[i], binary_end[i])) 
-        binary_arr.append(result) #result[0] = -result[1] since percentage has to sum to 100%
+    # binary_arr = []
+    # for i in range(len(binary_start)):
+    #     result = tuple(x - y for x, y in zip(binary_start[i], binary_end[i])) 
+    #     binary_arr.append(result) #result[0] = -result[1] since percentage has to sum to 100%
 
-    binary_sum = 0
-    for i in range(len(binary_arr)):
-        binary_sum += abs(binary_arr[i][0])
-    average_binary = binary_sum/len(binary_arr)
+    # binary_sum = 0
+    # for i in range(len(binary_arr)):
+    #     binary_sum += abs(binary_arr[i][0])
+    # average_binary = binary_sum/len(binary_arr)
 
-    return mean_arr, binary_arr, median_mean, average_binary
+    return mean_arr, median_mean
 
 def create_map():
     chessboard_size = 8
@@ -257,21 +260,38 @@ def find_valid_moves(start_canny, end_canny, mean_diff, mean_median, board):
                         valid_move = (start_move, map[j])
                         current_valid_moves.append(valid_move)
 
-    return current_valid_moves
+    return start_move, current_valid_moves
 
-def find_move(start_canny, end_canny, mean_diff, mean_median, binary_diff, binary_average, valid_moves):
+def determine_capture(binary_start, binary_end, board, chess_map):
+
+    binary_changes = []
+    for i in range(len(binary_start)):
+        current_square = chess_map[i]
+        square_to_check = chess.parse_square(current_square)
+        piece_at_square = board.piece_at(square_to_check)
+        
+        if piece_at_square is not None:
+            if binary_start[i][0] != binary_end[i][0]:
+                binary_changes.append(i)
+            
+    return binary_changes
+
+def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, board, start_move, numb_pieces):
     chess_map = create_map()
-    detected_move = 0
+    detected_move = ""
     capture = False
 
-    for i in valid_moves:
-        chess_index_start = find_key_by_value(chess_map, i[0])
-        chess_index_end = find_key_by_value(chess_map, i[1])
-
-        # Capture
-        # if abs(binary_diff[chess_index_end][0]) >= binary_average:
-        #     if binary_diff[chess_index_end][0] > 0 and binary_diff[chess_index_start][0] < 0 or binary_diff[chess_index_end][0] < 0 and binary_diff[chess_index_start][0] > 0:
-        #         detected_move = i[0] + i[1]
+    # Capture
+    binary_changes = determine_capture(binary_start, binary_end, board, chess_map)
+    if len(binary_changes) > 0: 
+        for i in range(len(binary_changes)):
+            potential_move = start_move + chess_map[i]
+            potential_move_uci = chess.Move.from_uci(potential_move)
+            for j in valid_moves:
+                if j == potential_move_uci:
+                    capture = True
+                    detected_move = potential_move
+                    numb_pieces =- 1
 
     # Normal Move
     if capture == False:
@@ -282,7 +302,13 @@ def find_move(start_canny, end_canny, mean_diff, mean_median, binary_diff, binar
             if end_canny[chess_index_end] > 0 and start_canny[chess_index_end] == 0: 
                 detected_move = i[0] + i[1]
 
-    return detected_move
+    if detected_move != '':
+        detected_move_uci = chess.Move.from_uci(detected_move)
+        board.push(detected_move_uci)
+    else:
+        print("Move not Found")
+
+    return detected_move, numb_pieces
 
 def calibration():
     img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\emptyBoard.jpg')
@@ -312,17 +338,14 @@ def start_end_moves(img_start, img_end, all_nodes, board):
     result_image_end = line_detector(end_position_roi, end_position_canny)
     grid_occupied_end, mean_end, binary_end = grid_search(end_position_roi, result_image_end, all_nodes, numb_pieces)
 
-    mean_arr, binary_arr, mean_median, binary_average = determineBoardPosition(binary_start, mean_start, binary_end, mean_end)
+    mean_arr, mean_median = determineBoardPosition(mean_start, mean_end)
 
     game_move = game_move + 1
-    valid_moves = find_valid_moves(grid_occupied_start, grid_occupied_end, mean_arr, mean_median, board)
+    start_move, valid_moves = find_valid_moves(grid_occupied_start, grid_occupied_end, mean_arr, mean_median, board)
     print(valid_moves)
-    detected_move = find_move(grid_occupied_start, grid_occupied_end, mean_arr, mean_median, binary_arr, binary_average, valid_moves)
+    detected_move, numb_pieces = find_move(grid_occupied_start, grid_occupied_end, binary_start, binary_end, valid_moves, board, start_move, numb_pieces)
     print(detected_move)
     
-    deteceted_move_uci = chess.Move.from_uci(detected_move)
-    board.push(deteceted_move_uci)
-
     return board
 
 if __name__ == "__main__":

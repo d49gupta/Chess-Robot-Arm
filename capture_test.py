@@ -42,8 +42,10 @@ def grid_search(image, chess_nodes):
             white_percentage = white_pixels/total_pixels*100
             black_percentage = black_pixels/total_pixels*100
 
-            total = (white_percentage, black_percentage)
-            arr.append(total)
+            if white_percentage > black_percentage:
+                arr.append('White')
+            elif black_percentage > white_percentage:
+                arr.append('Black')
 
             mean_color = np.mean(grey_square, axis=(0, 1))
             grid_occupied.append(mean_color)
@@ -73,12 +75,12 @@ if __name__ == "__main__":
     image = resize(img, 15)
     all_nodes = find_exterior_corners(image)
 
-    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\first_move.jpg')
+    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\starting_position.jpg')
     image_start = resize(img, 15)
     grid_occupied1, binary1 = grid_search(image_start, all_nodes)
 
 
-    img2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\second_move.jpg')
+    img2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\first_move.jpg')
     image_end = resize(img2, 15)
     grid_occupied2, binary2 = grid_search(image_end, all_nodes)
 
@@ -90,27 +92,34 @@ if __name__ == "__main__":
 
     output_array = [0]*len(thing1)
     sorted_input = sorted(thing1, reverse=True)
-    median1 = sorted_input[9]
+    median1 = sorted_input[15]
 
-    thing2 = []
-    for i in range(len(binary1)):
-        result = tuple(x - y for x, y in zip(binary1[i], binary2[i])) 
-        thing2.append(result) #result[0] = -result[1] since percentage has to sum to 100%
+    # thing2 = []
+    # for i in range(len(binary1)):
+    #     result = tuple(x - y for x, y in zip(binary1[i], binary2[i])) 
+    #     thing2.append(result) #result[0] = -result[1] since percentage has to sum to 100%
 
-    sum = 0
-    for i in range(len(thing2)):
-        sum += abs(thing2[i][0])
-    average2 = sum/len(thing2)
+    # sum = 0
+    # for i in range(len(thing2)):
+    #     sum += abs(thing2[i][0])
+    # average2 = sum/len(thing2)
 
-    output_array1 = [0]*len(thing2)
-    sorted_input1 = sorted(thing2, reverse=True)
-    median2 = sorted_input1[9]
+    # output_array1 = [0]*len(thing2)
+    # sorted_input1 = sorted(thing2, reverse=True)
+    # median2 = sorted_input1[9]
     
-    print(thing1)
-    print(thing1[38], thing1[36], average1, median1)
+    # print(thing1)
+    # print(thing1[38], thing1[36], average1, median1)
+    # print()
+    # print(thing2)
+    # print(thing2[33], thing2[35], average2, median2) 
+
+    print(binary1)
     print()
-    print(thing2)
-    print(thing2[33], thing2[35], average2, median2) 
+    print(binary2)
+
+    print(thing1[33], thing1[35], median1)
+        
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
