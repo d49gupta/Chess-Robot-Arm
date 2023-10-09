@@ -21,17 +21,15 @@ def grid_search(image, chess_nodes):
     last_valid_node, next_row = 71, 9
     grid_occupied = []
     arr = []
+    color = ''
+    current_square = 0
+
     for i in range(last_valid_node):
         if i % next_row != 8: #cant have last column or last row
             square = image[chess_nodes[i][1]:chess_nodes[i + next_row][1], chess_nodes[i][0]:chess_nodes[i + 1][0]]   
             grey_square = cv2.cvtColor(square, cv2.COLOR_BGR2GRAY)
 
-            # if determine_color(i) == 'Black': # black square
-            #     threshold = 60
-            # elif determine_color(i) == 'White': # white square
-            #     threshold = 135
-
-            threshold = 55
+            threshold = 50
             _, binary_image = cv2.threshold(grey_square, threshold, 255, cv2.THRESH_BINARY)
             # cv2.imshow('Original image', square)
             # cv2.imshow("binary image", binary_image)
@@ -42,13 +40,22 @@ def grid_search(image, chess_nodes):
             white_percentage = white_pixels/total_pixels*100
             black_percentage = black_pixels/total_pixels*100
 
-            if white_percentage > black_percentage:
-                arr.append('White')
-            elif black_percentage > white_percentage:
-                arr.append('Black')
+            if determine_color(current_square) == 'Black': # black square
+                if white_percentage + 20 >= black_percentage:
+                    color = 'White'
+                else:
+                    color = 'Black'
+            elif determine_color(current_square) == 'White': # white square
+                if black_percentage + 20 >= white_percentage:
+                    color = 'Black'
+                else:
+                    color = 'White'
 
+            total = (white_percentage, black_percentage, color)
+            arr.append(color)
             mean_color = np.mean(grey_square, axis=(0, 1))
             grid_occupied.append(mean_color)
+            current_square += 1
 
     return grid_occupied, arr
 
@@ -71,16 +78,16 @@ def detect_changes(initial_image, current_image):
     return thresholded_diff
 
 if __name__ == "__main__":
-    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\emptyBoard.jpg')
+    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
     image = resize(img, 15)
     all_nodes = find_exterior_corners(image)
 
-    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fourth_move.jpg')
+    img = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
     image_start = resize(img, 15)
     grid_occupied1, binary1 = grid_search(image_start, all_nodes)
 
 
-    img2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fifth_move.jpg')
+    img2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
     image_end = resize(img2, 15)
     grid_occupied2, binary2 = grid_search(image_end, all_nodes)
 
@@ -115,10 +122,10 @@ if __name__ == "__main__":
     # print(thing2[33], thing2[35], average2, median2) 
 
     print(binary1)
+    print(binary1[28])
     print()
     print(binary2)
-
-    print(thing1[33], thing1[35], median1)
+    print(binary2[35])
         
 
     cv2.waitKey(0)

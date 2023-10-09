@@ -3,6 +3,8 @@ import numpy as np
 import chess
 from chessboard import display
 import sys
+import re
+
 global game_move
 global numb_pieces
 
@@ -114,6 +116,7 @@ def find_exterior_corners(input_image):
             chess_nodes[index] = (x, y) # fills all interior nodes
             cv2.circle(input_image, (x, y), 5, (0, 0, 255), -1) 
 
+        # cv2.imshow("Calibration", input_image)
         return chess_nodes
 
 def line_detector(image, canny_image):
@@ -146,6 +149,7 @@ def grid_search(image, canny_image, chess_nodes, numb_pieces):
     grid_occupied = []
     mean_occupied = []
     grid_binary_occupied = []
+    current_square = 0
 
     for i in range(last_valid_node):
         if i % next_row != 8: #cant have last column or last row
@@ -160,11 +164,8 @@ def grid_search(image, canny_image, chess_nodes, numb_pieces):
             # Thresholding Array
             binary_square = image[chess_nodes[i][1]:chess_nodes[i + next_row][1], chess_nodes[i][0]:chess_nodes[i + 1][0]]   
             grey_square = cv2.cvtColor(binary_square, cv2.COLOR_BGR2GRAY) 
-            if determine_color(i) == 'Black': # black square
-                threshold = 65
-            elif determine_color(i) == 'White': # white square
-                threshold = 185 
             
+            threshold = 50
             _, binary_image = cv2.threshold(grey_square, threshold, 255, cv2.THRESH_BINARY)
             total_binary_pixels = binary_image.size
             white_pixels = np.count_nonzero(binary_image == 255)
@@ -172,14 +173,22 @@ def grid_search(image, canny_image, chess_nodes, numb_pieces):
             white_percentage = white_pixels/total_binary_pixels*100
             black_percentage = black_pixels/total_binary_pixels*100
 
-            if white_percentage >= black_percentage:
-                grid_binary_occupied.append('White')
-            elif black_percentage > white_percentage:
-                grid_binary_occupied.append('Black')
+            if determine_color(current_square) == 'Black': # black square
+                if white_percentage + 20 > black_percentage:
+                    color = 'White'
+                else:
+                    color = 'Black'
+            elif determine_color(current_square) == 'White': # white square
+                if black_percentage + 20 > white_percentage:
+                    color = 'Black'
+                else:
+                    color = 'White'
+            grid_binary_occupied.append(color)
 
             # Mean array
             mean_color = np.mean(grey_square, axis=(0, 1))
             mean_occupied.append(mean_color)
+            current_square += 1
             
 
     output_array = [0]*len(grid_occupied)
@@ -234,6 +243,7 @@ def find_key_by_value(dictionary, target_value):
     return None  
 
 def find_valid_moves(start_canny, end_canny, mean_diff, mean_median, board):
+    start_move = ''
     map = create_map()
     current_valid_moves = []
     all_valid_moves = list(board.legal_moves)
@@ -250,11 +260,15 @@ def find_valid_moves(start_canny, end_canny, mean_diff, mean_median, board):
                     if move_uci in all_valid_moves:
                         valid_move = (start_move, map[j])
                         current_valid_moves.append(valid_move)
+    if start_move != '':
+        return start_move, current_valid_moves
+    else:
+        print("Start move not found")
+        sys.exit()
 
-    return start_move, current_valid_moves
+def determine_capture(binary_start, binary_end, board, chess_map, start_move):
 
-def determine_capture(binary_start, binary_end, board, chess_map):
-
+    start_move_index = find_key_by_value(chess_map, start_move)
     binary_changes = []
     for i in range(len(binary_start)):
         current_square = chess_map[i]
@@ -262,24 +276,47 @@ def determine_capture(binary_start, binary_end, board, chess_map):
         piece_at_square = board.piece_at(square_to_check)
         
         if piece_at_square is not None:
-            if binary_start[i][0] != binary_end[i][0]:
+            if binary_start[i][0] != binary_end[i][0] and i != start_move_index:
                 binary_changes.append(i)
             
     return binary_changes
+
+
+# def findCaptureMove(start_move, board, end_move):
+#     move_dictionary = {
+#         'a1': chess.A1,
+#         'a2': chess.A2,
+#         'e4': chess.E4
+#     }
+
+#     current_square = move_dictionary[start_move]
+#     current_piece = board.piece_at(current_square)
+
+#     if current_piece is not None:
+#         if current_piece == chess.Piece.from_symbol('P') or current_piece == chess.Piece.from_symbol('p'):  # Pawn move
+#             pawn_file = re.sub(r'[^a-zA-Z]', '', start_move)
+#             capture_move = pawn_file + 'x' + end_move
+#         else:
+#             capture_move = str(current_piece) + 'x' + end_move
+
+    return capture_move
 
 def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, board, start_move, numb_pieces):
     chess_map = create_map()
     detected_move = ''
     capture = False
 
+    print("Starting Move is: ", start_move)
     # Capture
-    binary_changes = determine_capture(binary_start, binary_end, board, chess_map)
+    binary_changes = determine_capture(binary_start, binary_end, board, chess_map, start_move)
+    print(binary_changes)
     if len(binary_changes) > 0: 
-        for i in range(len(binary_changes)):
+        for i in binary_changes:
+            # potential_move = findCaptureMove(start_move, board, chess_map[i])
             potential_move = start_move + chess_map[i]
-            potential_move_uci = chess.Move.from_uci(potential_move)
+            potential_move_tuple = (start_move, chess_map[i])
             for j in valid_moves:
-                if j == potential_move_uci:
+                if j == potential_move_tuple:
                     capture = True
                     detected_move = potential_move
                     numb_pieces =- 1
@@ -303,7 +340,7 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
     return detected_move, numb_pieces
 
 def calibration():
-    img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\emptyBoard.jpg')
+    img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
     empty_board_draw = resize(img_empty, 15) 
     all_nodes = find_exterior_corners(empty_board_draw)
     game_move = 0
@@ -340,13 +377,13 @@ def start_end_moves(img_start, img_end, all_nodes, board):
 if __name__ == "__main__":
     all_nodes, board, game_move, numb_pieces = calibration()
 
-    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\starting_position.jpg')
-    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\first_move.jpg')
-    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\second_move.jpg')
-    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\third_move.jpg')
-    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fourth_move.jpg')
-    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fifth_move.jpg')
-    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\sixth_move.jpg')
+    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
+    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
+    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
+    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
+    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move4.jpg')
+    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move5.jpg')
+    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move6.jpg')
 
     move = []
     move.append(move0)
@@ -373,9 +410,9 @@ if __name__ == "__main__":
             print("The Game is a Draw!")
             break
         
+        print("---------------------------------------------------------------")
         detected_move, board = start_end_moves(move[i], move[i+1], all_nodes, board)
         
-        print("---------------------------------------------------------------")
         if board.is_check():
             print(print(f"Move {game_move}: {detected_move}, You are in Check!"))
         else:
