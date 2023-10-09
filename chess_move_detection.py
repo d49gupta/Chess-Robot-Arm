@@ -38,6 +38,7 @@ def find_interior_corners(input_image):
         return interior_nodes
     else:
         print("Chessboard corners not found.")
+        sys.exit()
 
 def find_exterior_corners(input_image):
         interior_nodes = find_interior_corners(input_image)
