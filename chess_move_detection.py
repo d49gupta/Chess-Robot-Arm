@@ -4,10 +4,52 @@ import chess
 from chessboard import display
 import sys
 import re
+import socket
+from stockfish import Stockfish
 
 global game_move
 global numb_pieces
+server_socket = None
 
+def socket_server():
+    global server_socket
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_address = ('localhost', 12345)  # Change host and port as needed
+
+    try:
+        server_socket.bind(server_address)
+        server_socket.listen(5)
+        print("Server A is waiting for a connection...")
+
+        while True:
+            client_socket, client_address = server_socket.accept()
+            print(f"Connection established with {client_address}")
+
+            try:
+                data = client_socket.recv(1024).decode('utf-8')
+                print(f"Received from Program B: {data}")
+                response = main(data)
+                client_socket.send(response.encode('utf-8'))
+
+            except Exception as e:
+                print(f"Error while processing data: {e}")
+            finally:
+                client_socket.close()
+                
+    except Exception as e:
+        print(f"Server error: {e}")
+    finally:
+        print("Human Move Detection Program has Terminated")
+        exit()
+
+def exit():
+    global server_socket
+    if server_socket:
+        server_socket.close()
+    
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    sys.exit()
 
 def resize(img, scale):
     width = int(img.shape[1] * scale / 100)
@@ -35,10 +77,11 @@ def find_interior_corners(input_image):
             sorted_elements = sorted(corners_sorted_x[index:index + rows], key=lambda corner: corner[0][1], reverse = True) 
             interior_nodes[index:index + rows] = sorted_elements
 
+        print("Chessboard corners are found!")
         return interior_nodes
     else:
         print("Chessboard corners not found.")
-        sys.exit()
+        exit()
 
 def find_exterior_corners(input_image):
         interior_nodes = find_interior_corners(input_image)
@@ -265,7 +308,7 @@ def find_valid_moves(start_canny, end_canny, mean_diff, mean_median, board):
         return start_move, current_valid_moves
     else:
         print("Start move not found")
-        sys.exit()
+        exit()
 
 def determine_capture(binary_start, binary_end, board, chess_map, start_move):
 
@@ -282,35 +325,13 @@ def determine_capture(binary_start, binary_end, board, chess_map, start_move):
             
     return binary_changes
 
-
-# def findCaptureMove(start_move, board, end_move):
-#     move_dictionary = {
-#         'a1': chess.A1,
-#         'a2': chess.A2,
-#         'e4': chess.E4
-#     }
-
-#     current_square = move_dictionary[start_move]
-#     current_piece = board.piece_at(current_square)
-
-#     if current_piece is not None:
-#         if current_piece == chess.Piece.from_symbol('P') or current_piece == chess.Piece.from_symbol('p'):  # Pawn move
-#             pawn_file = re.sub(r'[^a-zA-Z]', '', start_move)
-#             capture_move = pawn_file + 'x' + end_move
-#         else:
-#             capture_move = str(current_piece) + 'x' + end_move
-
-    return capture_move
-
 def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, board, start_move, numb_pieces):
     chess_map = create_map()
     detected_move = ''
     capture = False
 
-    print("Starting Move is: ", start_move)
     # Capture
     binary_changes = determine_capture(binary_start, binary_end, board, chess_map, start_move)
-    print(binary_changes)
     if len(binary_changes) > 0: 
         for i in binary_changes:
             # potential_move = findCaptureMove(start_move, board, chess_map[i])
@@ -335,27 +356,37 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
         detected_move_uci = chess.Move.from_uci(detected_move)
         board.push(detected_move_uci)
     else:
-        print("Move not Found")
-        sys.exit()
+        print("End Move not Found")
+        exit()
 
     return detected_move, numb_pieces
 
 def calibration():
-    img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
+    while True:
+        try:
+            skill_level = int(input("Enter the skill level (1-20, where 1 is the easiest and 20 is the strongest): "))
+            if 1 <= skill_level <= 20:
+                break
+            else:
+                print("Invalid skill level. Please enter a number between 1 and 20.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number between 1 and 20.")
+
+    img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\emptyBoard.jpg')
+    # img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
     empty_board_draw = resize(img_empty, 15) 
     all_nodes = find_exterior_corners(empty_board_draw)
     game_move = 0
     numb_pieces = 32
 
     board = chess.Board()
+    print()
     print(f"Move {game_move}: Starting Position")
     print(board)
 
-    return all_nodes, board, game_move, numb_pieces
+    return all_nodes, board, game_move, numb_pieces, skill_level
 
-def start_end_moves(img_start, img_end, all_nodes, board):
-    global game_move
-    global numb_pieces
+def start_end_moves(img_start, img_end, all_nodes, board, numb_pieces, game_move):
 
     starting_position_roi = resize(img_start, 15)
     starting_position_canny = cv2.Canny(starting_position_roi, 125, 175)
@@ -373,18 +404,63 @@ def start_end_moves(img_start, img_end, all_nodes, board):
     start_move, valid_moves = find_valid_moves(grid_occupied_start, grid_occupied_end, mean_arr, mean_median, board)
     detected_move, numb_pieces = find_move(grid_occupied_start, grid_occupied_end, binary_start, binary_end, valid_moves, board, start_move, numb_pieces)
     
-    return detected_move, board
+    return detected_move, board, game_move
+
+def stockfish_make_move(stockfish, skill_level, board, opponent_move):
+
+    stockfish.set_skill_level(skill_level)
+    try:
+        if board.is_valid() and chess.Move.from_uci(opponent_move) in board.legal_moves:
+            board.push(chess.Move.from_uci(opponent_move))
+
+            stockfish.position(board)
+            best_move = stockfish.go(depth=20).bestmove
+            board.push(best_move)
+
+            return best_move.uci(), board.uci()
+        
+    except Exception as e:
+        print(f"Error in stockfish_make_move: {e}")
+        return None, board.uci()
+
+def check_if_game_ended(board):
+    end_game = False
+    if board.is_checkmate() == True:
+        if game_move % 2 == 1:
+            print("Black Wins!")
+        if game_move % 2 == 0:
+            print("White Wins!")
+        end_game = True
+
+    if board.is_stalemate() == True:
+        print("The Game is a Stalemate!")
+        end_game = True
+
+    if board.is_fivefold_repetition() == True or board.is_seventyfive_moves() == True:
+        print("The Game is a Draw!")
+        end_game = True
+    
+    return end_game
 
 if __name__ == "__main__":
-    all_nodes, board, game_move, numb_pieces = calibration()
+    stockfish = Stockfish(r"C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\stockfish-windows-x86-64-modern\stockfish\stockfish-windows-x86-64-modern.exe")
+    all_nodes, board, game_move, numb_pieces, skill_level = calibration()
 
-    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
-    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
-    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
-    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
-    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move4.jpg')
-    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move5.jpg')
-    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move6.jpg')
+    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\starting_position.jpg')
+    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\first_move.jpg')
+    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\second_move.jpg')
+    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\third_move.jpg')
+    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fourth_move.jpg')
+    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fifth_move.jpg')
+    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\sixth_move.jpg')
+
+    # move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
+    # move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
+    # move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
+    # move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
+    # move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move4.jpg')
+    # move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move5.jpg')
+    # move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move6.jpg')
 
     move = []
     move.append(move0)
@@ -395,30 +471,21 @@ if __name__ == "__main__":
     move.append(move5)
     move.append(move6)
 
-    for i in range(len(move) - 1):
-        if board.is_checkmate() == True:
-            if game_move % 2 == 1:
-                print("Black Wins!")
-            if game_move % 2 == 0:
-                print("White Wins!")
-            break
-
-        if board.is_stalemate() == True:
-            print("The Game is a Stalemate!")
-            break
-
-        if board.is_fivefold_repetition() == True or board.is_seventyfive_moves() == True:
-            print("The Game is a Draw!")
-            break
-        
+    for i in range(len(move) - 1):        
         print("---------------------------------------------------------------")
-        detected_move, board = start_end_moves(move[i], move[i+1], all_nodes, board)
+        detected_move, board, game_move = start_end_moves(move[i], move[i+1], all_nodes, board, numb_pieces, game_move)
+
+        if check_if_game_ended(board) == True:
+            break
         
         if board.is_check():
             print(print(f"Move {game_move}: {detected_move}, You are in Check!"))
         else:
             print(f"Move {game_move}: {detected_move}")
         print(board)
+    
+    print("Game has no more moves")
+    exit()
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
