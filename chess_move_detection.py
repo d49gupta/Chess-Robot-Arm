@@ -442,7 +442,7 @@ def check_if_game_ended(board):
     
     return end_game
 
-if __name__ == "__main__":
+def main():
     stockfish = Stockfish(r"C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\stockfish-windows-x86-64-modern\stockfish\stockfish-windows-x86-64-modern.exe")
     all_nodes, board, game_move, numb_pieces, skill_level = calibration()
 
@@ -487,5 +487,5 @@ if __name__ == "__main__":
     print("Game has no more moves")
     exit()
 
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+if __name__ == "__main__":
+    main()
