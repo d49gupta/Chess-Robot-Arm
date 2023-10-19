@@ -365,15 +365,6 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
     return detected_move, numb_pieces
 
 def calibration(img_empty):
-    while True:
-        try:
-            skill_level = int(input("Enter the skill level (1-20, where 1 is the easiest and 20 is the strongest): "))
-            if 1 <= skill_level <= 20:
-                break
-            else:
-                print("Invalid skill level. Please enter a number between 1 and 20.")
-        except ValueError:
-            print("Invalid input. Please enter a valid number between 1 and 20.")
 
     # empty_board_draw = resize(img_empty, 15) 
     all_nodes = find_exterior_corners(img_empty)
@@ -384,8 +375,8 @@ def calibration(img_empty):
     print()
     print(f"Move {game_move}: Starting Position")
     print(board)
-
-    return all_nodes, board, game_move, numb_pieces, skill_level
+    
+    return all_nodes, board, game_move, numb_pieces
 
 def start_end_moves(img_start, img_end, all_nodes, board, numb_pieces, game_move):
 
@@ -453,6 +444,16 @@ def print_board(board, detected_move, game_move):
     print(board)
 
 def main():
+    while True:
+        try:
+            skill_level = int(input("Enter the skill level (1-20, where 1 is the easiest and 20 is the strongest): "))
+            if 1 <= skill_level <= 20:
+                break
+            else:
+                print("Invalid skill level. Please enter a number between 1 and 20.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number between 1 and 20.")
+
     global calibration_mode, start_image, end_image
     stockfish = Stockfish(r"C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\stockfish-windows-x86-64-modern\stockfish\stockfish-windows-x86-64-modern.exe")
     cap = cv2.VideoCapture(1)
@@ -467,7 +468,7 @@ def main():
 
         if key == ord('c') or key == ord('C'): 
             calibration_image = frame
-            all_nodes, board, game_move, numb_pieces, skill_level = calibration(calibration_image)
+            all_nodes, board, game_move, numb_pieces = calibration(calibration_image)
             calibration_mode = True
             print("Calibration image has been captured!")
 
