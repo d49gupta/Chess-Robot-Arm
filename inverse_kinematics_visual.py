@@ -58,7 +58,7 @@ def plot_graph(joint_angles, link_lengths, destination_point):
     plt.show()
 
 def main():
-    link_lengths = [4, 10, 12.5, 7.5, 3]
+    link_lengths = [5, 10, 12.5, 8, 3]
     destination_point = [10, 10, 10]
 
     joint_angles = find_joint_angles(destination_point, link_lengths)
