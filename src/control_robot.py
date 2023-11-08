@@ -3,7 +3,7 @@ import time
 import threading
 
 # Define the GPIO pins to which the servos are connected
-joints = [2, 3, 4, 14, 15, 18]  # Example GPIO pins
+joints = [2, 3, 4, 14, 15, 18]  
 
 # Set up GPIO
 GPIO.setmode(GPIO.BCM)
@@ -18,9 +18,9 @@ def set_joint_angle(pwm, angle):
     duty_cycle = (angle / 18) + 2  # Convert angle to duty cycle (2 to 12)
     pwm.ChangeDutyCycle(duty_cycle)
 
-def servo_thread(pwm, angle):
+def servo_thread(pwm, angle, time):
     set_joint_angle(pwm, angle)
-    time.sleep(10)  # Keep the servo in this position for 10 seconds
+    time.sleep(time)  # Keep the servo in this position for 10 seconds
 
 try:
     # Start PWM for all joints
@@ -32,7 +32,7 @@ try:
     threads = []
 
     for index, joint_angle in enumerate(joint_angles):
-        thread = threading.Thread(target=servo_thread, args=(pwms[index], joint_angle))
+        thread = threading.Thread(target=servo_thread, args=(pwms[index], joint_angle, 10))
         threads.append(thread)
         thread.start()
 

@@ -6,6 +6,7 @@ import sys
 import re
 import socket
 from stockfish import Stockfish
+import json
 
 global game_move
 global numb_pieces

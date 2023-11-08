@@ -77,3 +77,27 @@ grid on
 disp("Joint Angles:");
 disp(configSoln_degrees);
 
+function receive_message()
+    t = tcpclient('localhost', 12345);  % Connect to the Python server (replace 'localhost' with the server's IP if needed)
+    fopen(t);
+    
+    % Receive data from the Python program
+    data_received = fread(t, t.BytesAvailable);
+    received_message = char(data_received');
+    
+    % Display the received data
+    disp(['Received message from Python: ' received_message])
+    
+    % Clean up
+    delete(t);
+end
+
+function send_message(message)    
+    t = tcpclient('localhost', 12345);
+    
+    % Send the message
+    write(t, message);
+    
+    % Close the socket
+    delete(t);
+end
