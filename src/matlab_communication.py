@@ -15,9 +15,9 @@ def run_matlab_program():
     except subprocess.CalledProcessError as e:
         print(f"Error running MATLAB script: {e}")
 
-def create_socket(data_to_send):
+def send_message(data_to_send, port):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(("0.0.0.0", 12345))  # Bind to a specific IP address and port
+    server_socket.bind(("0.0.0.0", port))  # Bind to a specific IP address and port
     server_socket.listen(1)  # Listen for incoming connections
     print("Waiting for MATLAB connection...")
     client_socket, client_address = server_socket.accept()  # Accept a client connection
@@ -28,9 +28,9 @@ def create_socket(data_to_send):
     client_socket.close()
     server_socket.close()
 
-def receive_message():
+def receive_message(port):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(("0.0.0.0", 12345))  # Bind to a specific IP address and port
+    server_socket.bind(("0.0.0.0", port))  # Bind to a specific IP address and port
     server_socket.listen(1)  # Listen for incoming connections
     print("Waiting for a connection...")
     client_socket, client_address = server_socket.accept()  # Accept a client connection

@@ -7,6 +7,7 @@ import re
 import socket
 from stockfish import Stockfish
 import json
+import matlab_communication
 
 global game_move
 global numb_pieces
@@ -14,6 +15,8 @@ server_socket = None
 calibration_mode = False
 start_image = None
 end_image = None
+matlab_port = 12345
+rpi_port = 12346
 
 def socket_server():
     global server_socket
@@ -444,6 +447,44 @@ def print_board(board, detected_move, game_move):
         print(f"Move {game_move}: {detected_move}")
     print(board)
 
+def create_coordinate_dict():
+    column_dict = {
+        'a': -17.5, 
+        'b': -12.5, 
+        'c': -7.5,
+        'd': -2.5, 
+        'e': 2.5,
+        'f': 7.5, 
+        'g': 12.5, 
+        'h': 17.5
+    }
+    piece_dict = {
+        'p': 5,
+        'b': 8,
+        'k': 7,
+        'r': 6,
+        'q': 10,
+        'k': 12 
+    }
+    return column_dict, piece_dict
+
+def find_coordinates(move, board):
+    string_midpoint = len(move) // 2
+    start_move = move[:string_midpoint]
+    end_move = move[string_midpoint:]
+    file, rank = chess.square_file(chess.SQUARE_NAMES.index(start_move)), chess.square_rank(chess.SQUARE_NAMES.index(start_move))
+    current_piece = str(board.piece_at(chess.square(file, rank)).symbol())
+    column_dict, piece_dict = create_coordinate_dict()
+
+    moves = [start_move, end_move]
+    coordinates_list = []
+    for i in moves:
+        coordinates = {'x': column_dict[i[0]], 'y': int(i[1])*2.5, 'z': piece_dict[current_piece]}
+        data_json = json.dumps(coordinates)
+        coordinates_list.append(data_json)
+
+    return coordinates_list
+
 def main():
     while True:
         try:
@@ -491,6 +532,16 @@ def main():
 
             engine_move, engine_board, game_move = stockfish_make_move(stockfish, skill_level, board, detected_move, game_move)
             print_board(engine_board, engine_move, game_move)
+            move_coordinates = find_coordinates(engine_move, engine_board)
+
+            for i in move_coordinates:
+                matlab_communication.send_message(i, matlab_port)
+                matlab_communication.run_matlab_program()
+                matlab_communication.receive_message(matlab_port)
+
+            matlab_communication.send_message(rpi_port)
+            # Run RPI program
+            matlab_communication.receive_message(rpi_port)
 
             start_image = None
             end_image = None
