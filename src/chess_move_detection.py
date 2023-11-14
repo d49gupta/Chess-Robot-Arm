@@ -536,7 +536,7 @@ def main():
 
             for i in move_coordinates:
                 matlab_communication.send_message(i, matlab_port)
-                matlab_communication.run_matlab_program()
+                # Run MATLAB program
                 matlab_communication.receive_message(matlab_port)
 
             matlab_communication.send_message(rpi_port)

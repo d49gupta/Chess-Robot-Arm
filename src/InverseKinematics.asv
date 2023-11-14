@@ -5,8 +5,8 @@ if message ~= ''
     x_value = data_struct.x;
     y_value = data_struct.y;
     z_value = data_struct.z;
-    joint_angles = inverse_kinematics(x_value, y_value, z_value);
-    send_message(joint_angles)
+    joint_angles = inverse_kinematics(x_value, y_value, z_value)
+    send_m
 end
 
 function configSoln_degrees = inverse_kinematics(x, y, z)

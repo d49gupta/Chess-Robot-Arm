@@ -1,9 +1,9 @@
 import socket
 import subprocess
+import json
 
 def run_matlab_program():
     matlab_command = f'matlab -batch {"InverseKinematics"}'
-    print("running matlab program")
     try:
         result = subprocess.run(matlab_command, shell=True, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print("MATLAB Output:")
@@ -42,4 +42,6 @@ def receive_message(port):
     server_socket.close()
 
 if __name__ == "__main__":
-    receive_message()
+    coordinates = {'x': 10, 'y': 10, 'z': 10}
+    data_json = json.dumps(coordinates)
+    send_message(data_json, 12345)
