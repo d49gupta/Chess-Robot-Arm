@@ -2,16 +2,22 @@ try
     t = tcpclient('localhost', 12345);  
     fopen(t);
     disp('Connection Successful')
-    message = receive_message(t);
-    if numel(message) > 0
-        data_struct = jsondecode(message);
-        x_value = data_struct.x;
-        y_value = data_struct.y;
-        z_value = data_struct.z;
-        joint_angles = inverse_kinematics(x_value, y_value, z_value);
-        json_str = jsonencode(joint_angles);
-        write(t, json_str);
-        delete(t)
+    while true
+        message = receive_message(t);
+        if ~isempty(message) && strcmp(message, 'exit')
+            disp('Script has ended')
+            delete(t)
+            break
+        end
+        if numel(message) > 0
+            data_struct = jsondecode(message);
+            x_value = data_struct.x;
+            y_value = data_struct.y;
+            z_value = data_struct.z;
+            joint_angles = inverse_kinematics(x_value, y_value, z_value);
+            json_str = jsonencode(joint_angles);
+            write(t, json_str);
+        end
     end
 catch
     disp('Connection Failed')
@@ -65,14 +71,9 @@ function configSoln_degrees = inverse_kinematics(x, y, z)
     
     % Initializes robot angles at random (provides initial guess)
     randConfig = robot.randomConfiguration;
-    
-    % Desired transformation matrix 
-%     x = input("Enter the desired x coordinate: ");
-%     y = input("Enter the desired y coordinate: ");
-%     z = input("Enter the desired z coordinate: ");
     user_tform = [1 0 0 x; 0 1 0 y; 0 0 -1 z; 0 0 0 1];
     tform = getTransform(robot,randConfig,"body5","body1");
-    showdetails(robot)
+%     showdetails(robot)
     
     % Calculate the Inverse Kinematics
     ik = inverseKinematics("RigidBodyTree",robot);
@@ -94,8 +95,8 @@ function configSoln_degrees = inverse_kinematics(x, y, z)
 %     grid on
     
     % Display joint angles
-    disp("Joint Angles:");
-    disp(configSoln_degrees);
+%     disp("Joint Angles:");
+%     disp(configSoln_degrees);
 end
 
 function received_message = receive_message(t)
@@ -105,6 +106,5 @@ function received_message = receive_message(t)
         disp(['Received message from Python: ' received_message])
     else
         received_message = ''; 
-        disp('No information found')
     end
 end

@@ -16,10 +16,10 @@ def run_matlab_program():
     except subprocess.CalledProcessError as e:
         print(f"Error running MATLAB script: {e}")
 
-def start_server():
+def start_server(port):
     # Create a server socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_address = ('localhost', 12345)
+    server_address = ('localhost', port)
     server_socket.bind(server_address)
     server_socket.listen(1)
     print('Server listening on {}:{}'.format(*server_address))
@@ -42,16 +42,20 @@ def send_message(client_socket, message):
     print('Sent message to client:', message)
 
 if __name__ == "__main__":
-    server_socket, client_socket = start_server()
-    coordinates = {'x': 10, 'y': 10, 'z': 10}
-    data_json = json.dumps(coordinates)
-    send_message(client_socket, data_json)
-    joint_angles = receive_message(client_socket)
+    server_socket, client_socket = start_server(12345)
+    coordinates_list = [{'x': 10, 'y': 10, 'z': 10}, {'x': 5, 'y': 5, 'z': 5}]
 
-    for i in range(len(joint_angles)):
-        if joint_angles[i] < 0:
-            joint_angles[i] += 180
-        print("Joint Angle %d: %f" % (i + 1, joint_angles[i]))
+    for coordinates in coordinates_list:
+        data_json = json.dumps(coordinates)
+        send_message(client_socket, data_json)
+        joint_angles = receive_message(client_socket)
+
+        for i in range(len(joint_angles)):
+            if joint_angles[i] < 0:
+                joint_angles[i] += 180
+            print("Joint Angle %d: %f" % (i + 1, joint_angles[i]))
+
+    send_message(client_socket, 'exit')
 
     client_socket.close()
     server_socket.close()

@@ -11,48 +11,20 @@ import matlab_communication
 
 global game_move
 global numb_pieces
-server_socket = None
+matlab_server_socket = None
+matlab_client_socket = None
 calibration_mode = False
 start_image = None
 end_image = None
 matlab_port = 12345
 rpi_port = 12346
 
-def socket_server():
-    global server_socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_address = ('localhost', 12345)  # Change host and port as needed
-
-    try:
-        server_socket.bind(server_address)
-        server_socket.listen(5)
-        print("Server A is waiting for a connection...")
-
-        while True:
-            client_socket, client_address = server_socket.accept()
-            print(f"Connection established with {client_address}")
-
-            try:
-                data = client_socket.recv(1024).decode('utf-8')
-                print(f"Received from Program B: {data}")
-                response = main(data)
-                client_socket.send(response.encode('utf-8'))
-
-            except Exception as e:
-                print(f"Error while processing data: {e}")
-            finally:
-                client_socket.close()
-                
-    except Exception as e:
-        print(f"Server error: {e}")
-    finally:
-        print("Human Move Detection Program has Terminated")
-        exit_program()
-
 def exit_program():
-    global server_socket
-    if server_socket:
-        server_socket.close()
+    if matlab_server_socket:
+        matlab_server_socket.close()
+    if matlab_client_socket:
+        matlab_communication.send_message(matlab_client_socket, 'exit')
+        matlab_client_socket.close()
     
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -369,6 +341,8 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
     return detected_move, numb_pieces
 
 def calibration(img_empty):
+    global matlab_server_socket, matlab_client_socket
+    matlab_server_socket, matlab_client_socket = matlab_communication.start_server(matlab_port)
 
     empty_board_draw = resize(img_empty, 15) 
     all_nodes = find_exterior_corners(empty_board_draw)
@@ -463,6 +437,7 @@ def create_coordinate_dict():
         'b': 8,
         'k': 7,
         'r': 6,
+        'n': 6,
         'q': 10,
         'k': 12 
     }
@@ -472,14 +447,14 @@ def find_coordinates(move, board):
     string_midpoint = len(move) // 2
     start_move = move[:string_midpoint]
     end_move = move[string_midpoint:]
-    file, rank = chess.square_file(chess.SQUARE_NAMES.index(start_move)), chess.square_rank(chess.SQUARE_NAMES.index(start_move))
+    file, rank = chess.square_file(chess.SQUARE_NAMES.index(end_move)), chess.square_rank(chess.SQUARE_NAMES.index(end_move))
     current_piece = str(board.piece_at(chess.square(file, rank)).symbol())
     column_dict, piece_dict = create_coordinate_dict()
 
     moves = [start_move, end_move]
     coordinates_list = []
     for i in moves:
-        coordinates = {'x': column_dict[i[0]], 'y': int(i[1])*2.5, 'z': piece_dict[current_piece]}
+        coordinates = {'x': column_dict[i[0]], 'y': int(i[1])*2.5, 'z': piece_dict[current_piece.lower()]}
         data_json = json.dumps(coordinates)
         coordinates_list.append(data_json)
 
@@ -520,17 +495,16 @@ def main():
     move.append(move6)
 
     for i in range(len(move) - 1):        
-        print("---------------------------------------------------------------")
         detected_move, board, game_move = start_end_moves(move[i], move[i+1], all_nodes, board, numb_pieces, game_move)
-
         if check_if_game_ended(board) == True:
             break
-        
-        if board.is_check():
-            print(print(f"Move {game_move}: {detected_move}, You are in Check!"))
         else:
-            print(f"Move {game_move}: {detected_move}")
-        print(board)
+            print_board(board, detected_move, game_move)
+            coordinates_list = find_coordinates(detected_move, board)
+
+            for coordinates in coordinates_list:
+                matlab_communication.send_message(matlab_client_socket, coordinates)
+                joint_angles = matlab_communication.receive_message(matlab_client_socket)
     
     print("Game has no more moves")
     exit_program()
