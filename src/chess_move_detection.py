@@ -6,46 +6,25 @@ import sys
 import re
 import socket
 from stockfish import Stockfish
+import json
+import matlab_communication
 
 global game_move
 global numb_pieces
-server_socket = None
+matlab_server_socket = None
+matlab_client_socket = None
+calibration_mode = False
+start_image = None
+end_image = None
+matlab_port = 12345
+rpi_port = 12346
 
-def socket_server():
-    global server_socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_address = ('localhost', 12345)  # Change host and port as needed
-
-    try:
-        server_socket.bind(server_address)
-        server_socket.listen(5)
-        print("Server A is waiting for a connection...")
-
-        while True:
-            client_socket, client_address = server_socket.accept()
-            print(f"Connection established with {client_address}")
-
-            try:
-                data = client_socket.recv(1024).decode('utf-8')
-                print(f"Received from Program B: {data}")
-                response = main(data)
-                client_socket.send(response.encode('utf-8'))
-
-            except Exception as e:
-                print(f"Error while processing data: {e}")
-            finally:
-                client_socket.close()
-                
-    except Exception as e:
-        print(f"Server error: {e}")
-    finally:
-        print("Human Move Detection Program has Terminated")
-        exit()
-
-def exit():
-    global server_socket
-    if server_socket:
-        server_socket.close()
+def exit_program():
+    if matlab_server_socket:
+        matlab_server_socket.close()
+    if matlab_client_socket:
+        matlab_communication.send_message(matlab_client_socket, 'exit')
+        matlab_client_socket.close()
     
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -77,11 +56,11 @@ def find_interior_corners(input_image):
             sorted_elements = sorted(corners_sorted_x[index:index + rows], key=lambda corner: corner[0][1], reverse = True) 
             interior_nodes[index:index + rows] = sorted_elements
 
-        print("Chessboard corners are found!")
+        print("Chessboard has been found!")
         return interior_nodes
     else:
-        print("Chessboard corners not found.")
-        exit()
+        print("Chessboard was not found.")
+        exit_program()
 
 def find_exterior_corners(input_image):
         interior_nodes = find_interior_corners(input_image)
@@ -308,7 +287,7 @@ def find_valid_moves(start_canny, end_canny, mean_diff, mean_median, board):
         return start_move, current_valid_moves
     else:
         print("Start move not found")
-        exit()
+        exit_program()
 
 def determine_capture(binary_start, binary_end, board, chess_map, start_move):
 
@@ -357,23 +336,14 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
         board.push(detected_move_uci)
     else:
         print("End Move not Found")
-        exit()
+        exit_program()
 
     return detected_move, numb_pieces
 
-def calibration():
-    while True:
-        try:
-            skill_level = int(input("Enter the skill level (1-20, where 1 is the easiest and 20 is the strongest): "))
-            if 1 <= skill_level <= 20:
-                break
-            else:
-                print("Invalid skill level. Please enter a number between 1 and 20.")
-        except ValueError:
-            print("Invalid input. Please enter a valid number between 1 and 20.")
+def calibration(img_empty):
+    global matlab_server_socket, matlab_client_socket
+    matlab_server_socket, matlab_client_socket = matlab_communication.start_server(matlab_port)
 
-    img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\emptyBoard.jpg')
-    # img_empty = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
     empty_board_draw = resize(img_empty, 15) 
     all_nodes = find_exterior_corners(empty_board_draw)
     game_move = 0
@@ -383,8 +353,8 @@ def calibration():
     print()
     print(f"Move {game_move}: Starting Position")
     print(board)
-
-    return all_nodes, board, game_move, numb_pieces, skill_level
+    
+    return all_nodes, board, game_move, numb_pieces
 
 def start_end_moves(img_start, img_end, all_nodes, board, numb_pieces, game_move):
 
@@ -406,7 +376,7 @@ def start_end_moves(img_start, img_end, all_nodes, board, numb_pieces, game_move
     
     return detected_move, board, game_move
 
-def stockfish_make_move(stockfish, skill_level, board, opponent_move):
+def stockfish_make_move(stockfish, skill_level, board, opponent_move, game_move):
 
     stockfish.set_skill_level(skill_level)
     try:
@@ -416,8 +386,9 @@ def stockfish_make_move(stockfish, skill_level, board, opponent_move):
             stockfish.position(board)
             best_move = stockfish.go(depth=20).bestmove
             board.push(best_move)
+            game_move += 1
 
-            return best_move.uci(), board.uci()
+            return best_move.uci(), board.uci(), game_move
         
     except Exception as e:
         print(f"Error in stockfish_make_move: {e}")
@@ -442,25 +413,77 @@ def check_if_game_ended(board):
     
     return end_game
 
-if __name__ == "__main__":
+def print_board(board, detected_move, game_move):
+    print("---------------------------------------------------------------")
+    if board.is_check():
+        print(print(f"Move {game_move}: {detected_move}, You are in Check!"))
+    else:
+        print(f"Move {game_move}: {detected_move}")
+    print(board)
+
+def create_coordinate_dict():
+    column_dict = {
+        'a': -17.5, 
+        'b': -12.5, 
+        'c': -7.5,
+        'd': -2.5, 
+        'e': 2.5,
+        'f': 7.5, 
+        'g': 12.5, 
+        'h': 17.5
+    }
+    piece_dict = {
+        'p': 5,
+        'b': 8,
+        'k': 7,
+        'r': 6,
+        'n': 6,
+        'q': 10,
+        'k': 12 
+    }
+    return column_dict, piece_dict
+
+def find_coordinates(move, board):
+    string_midpoint = len(move) // 2
+    start_move = move[:string_midpoint]
+    end_move = move[string_midpoint:]
+    file, rank = chess.square_file(chess.SQUARE_NAMES.index(end_move)), chess.square_rank(chess.SQUARE_NAMES.index(end_move))
+    current_piece = str(board.piece_at(chess.square(file, rank)).symbol())
+    column_dict, piece_dict = create_coordinate_dict()
+
+    moves = [start_move, end_move]
+    coordinates_list = []
+    for i in moves:
+        coordinates = {'x': column_dict[i[0]], 'y': int(i[1])*2.5, 'z': piece_dict[current_piece.lower()]}
+        data_json = json.dumps(coordinates)
+        coordinates_list.append(data_json)
+
+    return coordinates_list
+
+def main():
+    while True:
+        try:
+            skill_level = int(input("Enter the skill level (1-20, where 1 is the easiest and 20 is the strongest): "))
+            if 1 <= skill_level <= 20:
+                break
+            else:
+                print("Invalid skill level. Please enter a number between 1 and 20.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number between 1 and 20.")
+
+    global calibration_mode, start_image, end_image
     stockfish = Stockfish(r"C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\stockfish-windows-x86-64-modern\stockfish\stockfish-windows-x86-64-modern.exe")
-    all_nodes, board, game_move, numb_pieces, skill_level = calibration()
 
-    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\starting_position.jpg')
-    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\first_move.jpg')
-    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\second_move.jpg')
-    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\third_move.jpg')
-    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fourth_move.jpg')
-    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\fifth_move.jpg')
-    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\4Move_Checkmate\sixth_move.jpg')
+    empty_board = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
+    all_nodes, board, game_move, numb_pieces = calibration(empty_board)
 
-    # move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
-    # move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
-    # move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
-    # move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
-    # move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move4.jpg')
-    # move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move5.jpg')
-    # move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move6.jpg')
+    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
+    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
+    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
+    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
+    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move4.jpg')
+    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move5.jpg')
+    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move6.jpg')
 
     move = []
     move.append(move0)
@@ -472,20 +495,19 @@ if __name__ == "__main__":
     move.append(move6)
 
     for i in range(len(move) - 1):        
-        print("---------------------------------------------------------------")
         detected_move, board, game_move = start_end_moves(move[i], move[i+1], all_nodes, board, numb_pieces, game_move)
-
         if check_if_game_ended(board) == True:
             break
-        
-        if board.is_check():
-            print(print(f"Move {game_move}: {detected_move}, You are in Check!"))
         else:
-            print(f"Move {game_move}: {detected_move}")
-        print(board)
+            print_board(board, detected_move, game_move)
+            coordinates_list = find_coordinates(detected_move, board)
+
+            for coordinates in coordinates_list:
+                matlab_communication.send_message(matlab_client_socket, coordinates)
+                joint_angles = matlab_communication.receive_message(matlab_client_socket)
     
     print("Game has no more moves")
-    exit()
+    exit_program()
 
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+if __name__ == "__main__":
+    main()
