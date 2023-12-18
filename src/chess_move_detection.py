@@ -13,6 +13,8 @@ global game_move
 global numb_pieces
 matlab_server_socket = None
 matlab_client_socket = None
+rpi_server_socket = None
+rpi_client_socket = None
 calibration_mode = False
 start_image = None
 end_image = None
@@ -25,6 +27,12 @@ def exit_program():
     if matlab_client_socket:
         matlab_communication.send_message(matlab_client_socket, 'exit')
         matlab_client_socket.close()
+
+    if rpi_server_socket:
+        rpi_server_socket.close()
+    if rpi_client_socket:
+        matlab_communication.send_message(rpi_client_socket, 'exit')
+        rpi_client_socket.close()
     
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -341,8 +349,9 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
     return detected_move, numb_pieces
 
 def calibration(img_empty):
-    global matlab_server_socket, matlab_client_socket
-    matlab_server_socket, matlab_client_socket = matlab_communication.start_server(matlab_port)
+    global matlab_server_socket, matlab_client_socket, rpi_server_socket, rpi_client_socket
+    matlab_server_socket, matlab_client_socket = matlab_communication.start_server('localhost', matlab_port)
+    rpi_server_socket, rpi_client_socket = matlab_communication.start_server('', rpi_port)
 
     empty_board_draw = resize(img_empty, 15) 
     all_nodes = find_exterior_corners(empty_board_draw)
@@ -463,7 +472,7 @@ def find_coordinates(move, board):
 def main():
     while True:
         try:
-            skill_level = int(input("Enter the skill level (1-20, where 1 is the easiest and 20 is the strongest): "))
+            skill_level = int(input("Enter the skill level of the robot(1-20, where 1 is the easiest and 20 is the strongest): "))
             if 1 <= skill_level <= 20:
                 break
             else:
@@ -505,6 +514,13 @@ def main():
             for coordinates in coordinates_list:
                 matlab_communication.send_message(matlab_client_socket, coordinates)
                 joint_angles = matlab_communication.receive_message(matlab_client_socket)
+                matlab_communication.send_message(rpi_client_socket, joint_angles)
+
+                while True:
+                    robot_status = rpi_client_socket.recv(1024).decode('utf-8')
+                    if robot_status == 'done':
+                        print("Robot has made its move")
+                        break
     
     print("Game has no more moves")
     exit_program()
