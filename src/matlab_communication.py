@@ -1,6 +1,7 @@
 import socket
 import subprocess
 import json
+import ast
 
 def run_matlab_program():
     matlab_command = f'matlab -batch {"InverseKinematics"}'
@@ -15,33 +16,42 @@ def run_matlab_program():
     except subprocess.CalledProcessError as e:
         print(f"Error running MATLAB script: {e}")
 
-def send_message(data_to_send, port):
+def start_server():
+    # Create a server socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(("0.0.0.0", port))  # Bind to a specific IP address and port
-    server_socket.listen(1)  # Listen for incoming connections
-    print("Waiting for MATLAB connection...")
-    client_socket, client_address = server_socket.accept()  # Accept a client connection
+    server_address = ('localhost', 12345)
+    server_socket.bind(server_address)
+    server_socket.listen(1)
+    print('Server listening on {}:{}'.format(*server_address))
 
-    client_socket.send(data_to_send.encode())
-    print("Message sent")
+    # Accept a connection
+    client_socket, client_address = server_socket.accept()
+    print('Accepted connection from {}:{}'.format(*client_address))
 
-    client_socket.close()
-    server_socket.close()
+    return server_socket, client_socket
 
-def receive_message(port):
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(("0.0.0.0", port))  # Bind to a specific IP address and port
-    server_socket.listen(1)  # Listen for incoming connections
-    print("Waiting for a connection...")
-    client_socket, client_address = server_socket.accept()  # Accept a client connection
-
-    data_received = client_socket.recv(1024).decode()
+def receive_message(client_socket):
+    data_received = client_socket.recv(1024).decode('utf-8')
     print("Received message from MATLAB:", data_received)
+    joint_angles = ast.literal_eval(data_received)
+    
+    return joint_angles
 
-    client_socket.close()
-    server_socket.close()
+def send_message(client_socket, message):
+    client_socket.sendall(message.encode())
+    print('Sent message to client:', message)
 
 if __name__ == "__main__":
+    server_socket, client_socket = start_server()
     coordinates = {'x': 10, 'y': 10, 'z': 10}
     data_json = json.dumps(coordinates)
-    send_message(data_json, 12345)
+    send_message(client_socket, data_json)
+    joint_angles = receive_message(client_socket)
+
+    for i in range(len(joint_angles)):
+        if joint_angles[i] < 0:
+            joint_angles[i] += 180
+        print("Joint Angle %d: %f" % (i + 1, joint_angles[i]))
+
+    client_socket.close()
+    server_socket.close()

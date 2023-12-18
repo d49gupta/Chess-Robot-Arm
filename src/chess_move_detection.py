@@ -370,8 +370,8 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
 
 def calibration(img_empty):
 
-    # empty_board_draw = resize(img_empty, 15) 
-    all_nodes = find_exterior_corners(img_empty)
+    empty_board_draw = resize(img_empty, 15) 
+    all_nodes = find_exterior_corners(empty_board_draw)
     game_move = 0
     numb_pieces = 32
 
@@ -384,15 +384,15 @@ def calibration(img_empty):
 
 def start_end_moves(img_start, img_end, all_nodes, board, numb_pieces, game_move):
 
-    # starting_position_roi = resize(img_start, 15)
-    starting_position_canny = cv2.Canny(img_start, 125, 175)
-    result_image = line_detector(img_start, starting_position_canny)
-    grid_occupied_start, mean_start, binary_start  = grid_search(img_start, result_image, all_nodes, numb_pieces)
+    starting_position_roi = resize(img_start, 15)
+    starting_position_canny = cv2.Canny(starting_position_roi, 125, 175)
+    result_image = line_detector(starting_position_roi, starting_position_canny)
+    grid_occupied_start, mean_start, binary_start  = grid_search(starting_position_roi, result_image, all_nodes, numb_pieces)
 
-    # end_position_roi = resize(img_end, 15)
-    end_position_canny = cv2.Canny(img_end, 125, 175)
-    result_image_end = line_detector(img_end, end_position_canny)
-    grid_occupied_end, mean_end, binary_end = grid_search(img_end, result_image_end, all_nodes, numb_pieces)
+    end_position_roi = resize(img_end, 15)
+    end_position_canny = cv2.Canny(end_position_roi, 125, 175)
+    result_image_end = line_detector(end_position_roi, end_position_canny)
+    grid_occupied_end, mean_end, binary_end = grid_search(end_position_roi, result_image_end, all_nodes, numb_pieces)
 
     mean_arr, mean_median = determineBoardPosition(mean_start, mean_end)
 
@@ -498,55 +498,41 @@ def main():
 
     global calibration_mode, start_image, end_image
     stockfish = Stockfish(r"C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\stockfish-windows-x86-64-modern\stockfish\stockfish-windows-x86-64-modern.exe")
-    cap = cv2.VideoCapture(1)
 
-    while True:
-        ret, frame = cap.read()
-        cv2.imshow('Webcam Feed', frame)
-        key = cv2.waitKey(1)
+    empty_board = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
+    all_nodes, board, game_move, numb_pieces = calibration(empty_board)
 
-        if key == ord('q'):
+    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
+    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
+    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
+    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
+    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move4.jpg')
+    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move5.jpg')
+    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move6.jpg')
+
+    move = []
+    move.append(move0)
+    move.append(move1)
+    move.append(move2)
+    move.append(move3)
+    move.append(move4)
+    move.append(move5)
+    move.append(move6)
+
+    for i in range(len(move) - 1):        
+        print("---------------------------------------------------------------")
+        detected_move, board, game_move = start_end_moves(move[i], move[i+1], all_nodes, board, numb_pieces, game_move)
+
+        if check_if_game_ended(board) == True:
             break
-
-        if key == ord('c') or key == ord('C'): 
-            calibration_image = frame
-            all_nodes, board, game_move, numb_pieces = calibration(calibration_image)
-            calibration_mode = True
-            print("Calibration image has been captured!")
-
-        if calibration_mode:
-            if key == ord('s') or key == ord('S'):
-                start_image = frame
-                print("Start Image has been captured!")
-
-            elif key == ord('e') or key == ord('E'):
-                end_image = frame
-                print("End Image has been captured!")
-
-        if start_image is not None and end_image is not None:
-            detected_move, board, game_move = start_end_moves(start_image, end_image, all_nodes, board, numb_pieces, game_move)
-            print_board(board, detected_move, game_move)
-
-            if check_if_game_ended(board) == True:
-                break
-
-            engine_move, engine_board, game_move = stockfish_make_move(stockfish, skill_level, board, detected_move, game_move)
-            print_board(engine_board, engine_move, game_move)
-            move_coordinates = find_coordinates(engine_move, engine_board)
-
-            for i in move_coordinates:
-                matlab_communication.send_message(i, matlab_port)
-                # Run MATLAB program
-                matlab_communication.receive_message(matlab_port)
-
-            matlab_communication.send_message(rpi_port)
-            # Run RPI program
-            matlab_communication.receive_message(rpi_port)
-
-            start_image = None
-            end_image = None
+        
+        if board.is_check():
+            print(print(f"Move {game_move}: {detected_move}, You are in Check!"))
+        else:
+            print(f"Move {game_move}: {detected_move}")
+        print(board)
     
-    print("Game has ended")
+    print("Game has no more moves")
     exit_program()
 
 if __name__ == "__main__":

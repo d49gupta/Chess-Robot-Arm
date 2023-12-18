@@ -1,12 +1,20 @@
-message = receive_message();
-
-if message ~= ''
-    data_struct = jsondecode(received_message);
-    x_value = data_struct.x;
-    y_value = data_struct.y;
-    z_value = data_struct.z;
-    joint_angles = inverse_kinematics(x_value, y_value, z_value);
-    send_message(joint_angles)
+try
+    t = tcpclient('localhost', 12345);  
+    fopen(t);
+    disp('Connection Successful')
+    message = receive_message(t);
+    if numel(message) > 0
+        data_struct = jsondecode(message);
+        x_value = data_struct.x;
+        y_value = data_struct.y;
+        z_value = data_struct.z;
+        joint_angles = inverse_kinematics(x_value, y_value, z_value);
+        json_str = jsonencode(joint_angles);
+        write(t, json_str);
+        delete(t)
+    end
+catch
+    disp('Connection Failed')
 end
 
 function configSoln_degrees = inverse_kinematics(x, y, z)
@@ -76,24 +84,21 @@ function configSoln_degrees = inverse_kinematics(x, y, z)
     configSoln_degrees = rad2deg([configSoln.JointPosition]);
     
     % Display on Graph
-    show(robot,configSoln);
-    hold on 
-    plot3(x, y, z, 'r.', 'MarkerSize', 10)
-    xlabel('X-axis');
-    ylabel('Y-axis');
-    zlabel('Z-axis');
-    title('Robot Arm with Desired Point');
-    grid on
+%     show(robot,configSoln);
+%     hold on 
+%     plot3(x, y, z, 'r.', 'MarkerSize', 10)
+%     xlabel('X-axis');
+%     ylabel('Y-axis');
+%     zlabel('Z-axis');
+%     title('Robot Arm with Desired Point');
+%     grid on
     
     % Display joint angles
     disp("Joint Angles:");
     disp(configSoln_degrees);
 end
 
-function received_message = receive_message()
-    t = tcpclient('localhost', 12345);  
-    fopen(t);
-    
+function received_message = receive_message(t)
     if t.BytesAvailable > 0
         data_received = fread(t, t.BytesAvailable);
         received_message = char(data_received');
@@ -102,11 +107,4 @@ function received_message = receive_message()
         received_message = ''; 
         disp('No information found')
     end
-    delete(t);
-end
-
-function send_message(message)    
-    t = tcpclient('localhost', 12345);
-    write(t, message);
-    delete(t);
 end
