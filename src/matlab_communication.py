@@ -20,10 +20,8 @@ def start_server(host, port):
     # Create a server socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_address = (host, port)
-    server_address = (host, port)
     server_socket.bind(server_address)
     server_socket.listen(1)
-    print('Server listening on {}: {}'.format(*server_address))
     print('Server listening on {}: {}'.format(*server_address))
 
     # Accept a connection
