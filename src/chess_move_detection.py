@@ -3,8 +3,7 @@ import numpy as np
 import chess
 from chessboard import display
 import sys
-import re
-import socket
+import loggingModule
 from stockfish import Stockfish
 import json
 import matlab_communication
@@ -20,6 +19,8 @@ start_image = None
 end_image = None
 matlab_port = 12345
 rpi_port = 12346
+logger = loggingModule.create_logger('ChessModeDetectionLogs')
+loggingModule.set_logger_level(logger, 'DEBUG')
 
 def exit_program():
     if matlab_server_socket:
@@ -509,11 +510,14 @@ def main():
             break
         else:
             print_board(board, detected_move, game_move)
+            logger.debug(f"Move {game_move}: {detected_move}")
             coordinates_list = find_coordinates(detected_move, board)
 
             for coordinates in coordinates_list:
+                logger.debug("Coordinates are: " + str(coordinates))
                 matlab_communication.send_message(matlab_client_socket, coordinates)
                 joint_angles = matlab_communication.receive_message(matlab_client_socket)
+                logger.debug("Joint angles are " + joint_angles)
                 matlab_communication.send_message(rpi_client_socket, joint_angles)
 
                 while True:
