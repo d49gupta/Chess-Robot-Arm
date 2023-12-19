@@ -1,7 +1,9 @@
 import RPi.GPIO as GPIO
+import time
 import socket
 import threading
 import ast
+import matlab_communication
 
 def setup():
     joints = [2, 3, 4, 14, 15, 18]  
@@ -16,15 +18,15 @@ def set_joint_angle(pwm, angle):
     duty_cycle = (angle / 18) + 2  # Convert angle to duty cycle (2 to 12)
     pwm.ChangeDutyCycle(duty_cycle)
 
-def servo_thread(pwm, angle, time):
+def servo_thread(pwm, angle, sleepTime):
     set_joint_angle(pwm, angle)
-    time.sleep(time) 
+    time.sleep(sleepTime) 
 
 def stop_robot():
     print("Script has ended")
     for pwm in pwms:
         pwm.stop()
-    GPIO.cleanup()
+    # GPIO.cleanup()
     if client_socket:
         client_socket.close()
 
@@ -42,15 +44,17 @@ def main():
         print(f'Connected to {server_address}')
 
         while True:
-            joint_angles = client_socket.recv(1024).decode('utf-8')
+            joint_angles = matlab_communication.receive_message(client_socket)
             print(joint_angles)
             if joint_angles == 'exit':
-                stop_robot()
                 break
             else:
                 joint_angles = ast.literal_eval(joint_angles)
                 threads = []
                 for index, joint_angle in enumerate(joint_angles):
+                    if joint_angle < 0:
+                        joint_angle += 180
+
                     thread = threading.Thread(target=servo_thread, args=(pwms[index], joint_angle, 10))
                     threads.append(thread)
                     thread.start()
@@ -58,7 +62,7 @@ def main():
                     thread.join()
                 
                 message = 'done'
-                client_socket.sendall(message.encode())
+                matlab_communication.send_message(client_socket, message)
     finally:
         stop_robot()
 
