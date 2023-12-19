@@ -17,11 +17,14 @@ def run_matlab_program():
         print(f"Error running MATLAB script: {e}")
 
 def start_server(host, port):
+def start_server(host, port):
     # Create a server socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_address = (host, port)
+    server_address = (host, port)
     server_socket.bind(server_address)
     server_socket.listen(1)
+    print('Server listening on {}: {}'.format(*server_address))
     print('Server listening on {}: {}'.format(*server_address))
 
     # Accept a connection
@@ -34,7 +37,10 @@ def receive_message(client_socket):
     data_received = client_socket.recv(1024).decode('utf-8')
     print("Received message from MATLAB:")
     # joint_angles = ast.literal_eval(data_received)
+    print("Received message from MATLAB:")
+    # joint_angles = ast.literal_eval(data_received)
     
+    return data_received
     return data_received
 
 def send_message(client_socket, message):

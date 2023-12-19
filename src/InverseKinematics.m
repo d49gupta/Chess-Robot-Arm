@@ -17,6 +17,7 @@ try
             joint_angles = inverse_kinematics(x_value, y_value, z_value);
             json_str = jsonencode(joint_angles);
             write(t, json_str);
+            disp('Sent message to Python')
         end
     end
 catch
