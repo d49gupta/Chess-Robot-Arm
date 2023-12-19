@@ -472,7 +472,7 @@ def find_coordinates(move, board):
 def main():
     while True:
         try:
-            skill_level = int(input("Enter the skill level of the robot(1-20, where 1 is the easiest and 20 is the strongest): "))
+            skill_level = int(input("Enter the skill level of the robot (1-20, where 1 is the easiest and 20 is the strongest): "))
             if 1 <= skill_level <= 20:
                 break
             else:
@@ -519,8 +519,8 @@ def main():
                 while True:
                     robot_status = rpi_client_socket.recv(1024).decode('utf-8')
                     if robot_status == 'done':
-                        print("Robot has made its move")
                         break
+            print("Robot has made its move")
     
     print("Game has no more moves")
     exit_program()
