@@ -32,11 +32,11 @@ def start_server(host, port):
 
 def receive_message(client_socket):
     data_received = client_socket.recv(1024).decode('utf-8')
-    print("Received message from client: " + data_received)
+    # print("Received message from client: " + data_received)
     # joint_angles = ast.literal_eval(data_received)
     
     return data_received
 
 def send_message(client_socket, message):
     client_socket.sendall(message.encode())
-    print('Sent message to client: ' + message)
+    # print('Sent message to client: ' + message)

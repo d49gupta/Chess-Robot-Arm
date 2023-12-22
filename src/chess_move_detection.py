@@ -433,14 +433,14 @@ def print_board(board, detected_move, game_move):
 
 def create_coordinate_dict():
     column_dict = {
-        'a': -17.5, 
-        'b': -12.5, 
-        'c': -7.5,
-        'd': -2.5, 
-        'e': 2.5,
-        'f': 7.5, 
-        'g': 12.5, 
-        'h': 17.5
+        'a': -13, 
+        'b': -8.5, 
+        'c': -5,
+        'd': -1.5, 
+        'e': 2,
+        'f': 5.5, 
+        'g': 9, 
+        'h': 12.5
     }
     piece_dict = {
         'p': 5,
@@ -464,7 +464,7 @@ def find_coordinates(move, board):
     moves = [start_move, end_move]
     coordinates_list = []
     for i in moves:
-        coordinates = {'x': column_dict[i[0]], 'y': int(i[1])*2.5, 'z': piece_dict[current_piece.lower()]}
+        coordinates = {'x': column_dict[i[0]], 'y': 10 + int(i[1])*2.5, 'z': piece_dict[current_piece.lower()]}
         data_json = json.dumps(coordinates)
         coordinates_list.append(data_json)
 
