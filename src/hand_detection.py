@@ -32,11 +32,14 @@ def GetStartingBoard(cap):
     return startingBoard
 
 def GetNextImage(cap, holistic, mp_drawing, mp_holistic):
+    current_frame = 0
+    desiredFrame = 0
+    handinFrame = False
+    
     while cap.isOpened():
         ret, frame = cap.read()
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = holistic.process(image)
-        # print(results.face_landmarks)
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         # Right hand
@@ -50,7 +53,18 @@ def GetNextImage(cap, holistic, mp_drawing, mp_holistic):
                                     mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4),
                                     mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)
                                     )
+        # print(results.right_hand_landmarks)
         cv2.imshow('Raw Webcam Feed', image)
+
+        if handinFrame == False and results.right_hand_landmarks != None:
+            print("Condition has been met")
+            handinFrame = True
+            desiredFrame = current_frame + 150 # Take Image after 5 seconds 
+        
+        if handinFrame == True and current_frame == desiredFrame:
+            return frame
+
+        current_frame += 1
         if cv2.waitKey(10) & 0xFF == ord('q'):
             break
 
