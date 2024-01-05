@@ -67,5 +67,6 @@ def setupVideo():
 
 if __name__ == "__main__":
     mp_drawing, mp_holistic, cap, holistic = setupVideo()
-
-    
+    GetNextImage(cap, holistic, mp_drawing, mp_holistic)
+    cap.release()
+    cv2.destroyAllWindows()

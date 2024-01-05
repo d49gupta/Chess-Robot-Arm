@@ -442,8 +442,9 @@ def main():
                 break
             else:
                 print_board(board, detected_move, game_move)
-                logger.debug(f"Move {game_move}: {detected_move}")
+                logger.debug(f"Move {game_move} (Human): {detected_move}")
                 robot_move, board, game_move = stockfish_make_move(stockfish, skill_level, board, detected_move, game_move)
+                logger.debug(f"Move {game_move} (Robot): {robot_move}")
                 if check_if_game_ended(board) == True:
                     break
                 else:
@@ -464,8 +465,6 @@ def main():
                     logger.info("Robot has made its move")
                     startMove = endMove
         
-        print("Game has no more moves")
-
     except KeyboardInterrupt:
         print("Script Interrupted")
 
