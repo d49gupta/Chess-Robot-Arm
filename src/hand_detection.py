@@ -57,7 +57,6 @@ def GetNextImage(cap, holistic, mp_drawing, mp_holistic):
         cv2.imshow('Raw Webcam Feed', image)
 
         if handinFrame == False and results.right_hand_landmarks != None:
-            print("Condition has been met")
             handinFrame = True
             desiredFrame = current_frame + 150 # Take Image after 5 seconds 
         
@@ -78,9 +77,3 @@ def setupVideo():
     holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     return mp_drawing, mp_holistic, cap, holistic
-
-if __name__ == "__main__":
-    mp_drawing, mp_holistic, cap, holistic = setupVideo()
-    GetNextImage(cap, holistic, mp_drawing, mp_holistic)
-    cap.release()
-    cv2.destroyAllWindows()
