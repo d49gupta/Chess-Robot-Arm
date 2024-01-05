@@ -3,11 +3,10 @@ import numpy as np
 import chess
 from chessboard import display
 import sys
-import re
-import socket
+import loggingModule
 from stockfish import Stockfish
-import json
 import matlab_communication
+from chess_engine import stockfish_make_move, find_coordinates
 
 global game_move
 global numb_pieces
@@ -15,11 +14,10 @@ matlab_server_socket = None
 matlab_client_socket = None
 rpi_server_socket = None
 rpi_client_socket = None
-calibration_mode = False
-start_image = None
-end_image = None
 matlab_port = 12345
 rpi_port = 12346
+logger = loggingModule.create_logger('ChessModeDetectionLogs')
+loggingModule.set_logger_level(logger, 'DEBUG')
 
 def exit_program():
     if matlab_server_socket:
@@ -385,24 +383,6 @@ def start_end_moves(img_start, img_end, all_nodes, board, numb_pieces, game_move
     
     return detected_move, board, game_move
 
-def stockfish_make_move(stockfish, skill_level, board, opponent_move, game_move):
-
-    stockfish.set_skill_level(skill_level)
-    try:
-        if board.is_valid() and chess.Move.from_uci(opponent_move) in board.legal_moves:
-            board.push(chess.Move.from_uci(opponent_move))
-
-            stockfish.position(board)
-            best_move = stockfish.go(depth=20).bestmove
-            board.push(best_move)
-            game_move += 1
-
-            return best_move.uci(), board.uci(), game_move
-        
-    except Exception as e:
-        print(f"Error in stockfish_make_move: {e}")
-        return None, board.uci()
-
 def check_if_game_ended(board):
     end_game = False
     if board.is_checkmate() == True:
@@ -430,45 +410,6 @@ def print_board(board, detected_move, game_move):
         print(f"Move {game_move}: {detected_move}")
     print(board)
 
-def create_coordinate_dict():
-    column_dict = {
-        'a': -17.5, 
-        'b': -12.5, 
-        'c': -7.5,
-        'd': -2.5, 
-        'e': 2.5,
-        'f': 7.5, 
-        'g': 12.5, 
-        'h': 17.5
-    }
-    piece_dict = {
-        'p': 5,
-        'b': 8,
-        'k': 7,
-        'r': 6,
-        'n': 6,
-        'q': 10,
-        'k': 12 
-    }
-    return column_dict, piece_dict
-
-def find_coordinates(move, board):
-    string_midpoint = len(move) // 2
-    start_move = move[:string_midpoint]
-    end_move = move[string_midpoint:]
-    file, rank = chess.square_file(chess.SQUARE_NAMES.index(end_move)), chess.square_rank(chess.SQUARE_NAMES.index(end_move))
-    current_piece = str(board.piece_at(chess.square(file, rank)).symbol())
-    column_dict, piece_dict = create_coordinate_dict()
-
-    moves = [start_move, end_move]
-    coordinates_list = []
-    for i in moves:
-        coordinates = {'x': column_dict[i[0]], 'y': int(i[1])*2.5, 'z': piece_dict[current_piece.lower()]}
-        data_json = json.dumps(coordinates)
-        coordinates_list.append(data_json)
-
-    return coordinates_list
-
 def main():
     while True:
         try:
@@ -480,7 +421,6 @@ def main():
         except ValueError:
             print("Invalid input. Please enter a valid number between 1 and 20.")
 
-    global calibration_mode, start_image, end_image
     stockfish = Stockfish(r"C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\stockfish-windows-x86-64-modern\stockfish\stockfish-windows-x86-64-modern.exe")
 
     empty_board = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
@@ -488,20 +428,10 @@ def main():
 
     move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
     move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
-    move2 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move2.jpg')
-    move3 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move3.jpg')
-    move4 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move4.jpg')
-    move5 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move5.jpg')
-    move6 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move6.jpg')
 
     move = []
     move.append(move0)
     move.append(move1)
-    move.append(move2)
-    move.append(move3)
-    move.append(move4)
-    move.append(move5)
-    move.append(move6)
 
     for i in range(len(move) - 1):        
         detected_move, board, game_move = start_end_moves(move[i], move[i+1], all_nodes, board, numb_pieces, game_move)
@@ -509,15 +439,20 @@ def main():
             break
         else:
             print_board(board, detected_move, game_move)
-            coordinates_list = find_coordinates(detected_move, board)
+            logger.debug(f"Move {game_move}: {detected_move}")
+            robot_move, board, game_move = stockfish_make_move(stockfish, skill_level, board, detected_move, game_move)
+            print_board(board, robot_move, game_move)
+            coordinates_list = find_coordinates(robot_move, board)
 
             for coordinates in coordinates_list:
+                logger.debug("Coordinates are: " + str(coordinates))
                 matlab_communication.send_message(matlab_client_socket, coordinates)
                 joint_angles = matlab_communication.receive_message(matlab_client_socket)
+                logger.debug("Joint angles are " + joint_angles)
                 matlab_communication.send_message(rpi_client_socket, joint_angles)
 
                 while True:
-                    robot_status = rpi_client_socket.recv(1024).decode('utf-8')
+                    robot_status = matlab_communication.receive_message(rpi_client_socket)
                     if robot_status == 'done':
                         break
             print("Robot has made its move")
