@@ -12,6 +12,7 @@ from chess_engine import stockfish_make_move, find_coordinates
 
 global game_move
 global numb_pieces
+cap = None
 matlab_server_socket = None
 matlab_client_socket = None
 rpi_server_socket = None
@@ -33,7 +34,9 @@ def exit_program():
     if rpi_client_socket:
         matlab_communication.send_message(rpi_client_socket, 'exit')
         rpi_client_socket.close()
-    
+    if cap:
+        cap.release()
+
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     sys.exit()
@@ -441,28 +444,32 @@ def main():
                 print_board(board, detected_move, game_move)
                 logger.debug(f"Move {game_move}: {detected_move}")
                 robot_move, board, game_move = stockfish_make_move(stockfish, skill_level, board, detected_move, game_move)
-                print_board(board, robot_move, game_move)
-                coordinates_list = find_coordinates(robot_move, board)
+                if check_if_game_ended(board) == True:
+                    break
+                else:
+                    print_board(board, robot_move, game_move)
+                    coordinates_list = find_coordinates(robot_move, board)
 
-                for coordinates in coordinates_list:
-                    logger.debug("Coordinates are: " + str(coordinates))
-                    matlab_communication.send_message(matlab_client_socket, coordinates)
-                    joint_angles = matlab_communication.receive_message(matlab_client_socket)
-                    logger.debug("Joint angles are " + joint_angles)
-                    matlab_communication.send_message(rpi_client_socket, joint_angles)
+                    for coordinates in coordinates_list:
+                        logger.debug("Coordinates are: " + str(coordinates))
+                        matlab_communication.send_message(matlab_client_socket, coordinates)
+                        joint_angles = matlab_communication.receive_message(matlab_client_socket)
+                        logger.debug("Joint angles are " + joint_angles)
+                        matlab_communication.send_message(rpi_client_socket, joint_angles)
 
-                    while True:
-                        robot_status = matlab_communication.receive_message(rpi_client_socket)
-                        if robot_status == 'done':
-                            break
-                print("Robot has made its move")
-                startMove = endMove
+                        while True:
+                            robot_status = matlab_communication.receive_message(rpi_client_socket)
+                            if robot_status == 'done':
+                                break
+                    logger.info("Robot has made its move")
+                    startMove = endMove
         
         print("Game has no more moves")
-        exit_program()
-        
+
     except KeyboardInterrupt:
         print("Script Interrupted")
+
+    finally:
         exit_program()
 
 if __name__ == "__main__":
