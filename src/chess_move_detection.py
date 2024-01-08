@@ -5,11 +5,14 @@ from chessboard import display
 import sys
 import loggingModule
 from stockfish import Stockfish
+
 import matlab_communication
+import hand_detection
 from chess_engine import stockfish_make_move, find_coordinates
 
 global game_move
 global numb_pieces
+cap = None
 matlab_server_socket = None
 matlab_client_socket = None
 rpi_server_socket = None
@@ -31,7 +34,9 @@ def exit_program():
     if rpi_client_socket:
         matlab_communication.send_message(rpi_client_socket, 'exit')
         rpi_client_socket.close()
-    
+    if cap:
+        cap.release()
+
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     sys.exit()
@@ -347,7 +352,18 @@ def find_move(start_canny, end_canny, binary_start, binary_end, valid_moves, boa
     return detected_move, numb_pieces
 
 def calibration(img_empty):
-    global matlab_server_socket, matlab_client_socket, rpi_server_socket, rpi_client_socket
+    global matlab_server_socket, matlab_client_socket, rpi_server_socket, rpi_client_socket, skill_level
+
+    while True:
+        try:
+            skill_level = int(input("Enter the skill level of the robot (1-20, where 1 is the easiest and 20 is the strongest): "))
+            if 1 <= skill_level <= 20:
+                break
+            else:
+                print("Invalid skill level. Please enter a number between 1 and 20.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number between 1 and 20.")
+
     matlab_server_socket, matlab_client_socket = matlab_communication.start_server('localhost', matlab_port)
     rpi_server_socket, rpi_client_socket = matlab_communication.start_server('', rpi_port)
 
@@ -411,54 +427,49 @@ def print_board(board, detected_move, game_move):
     print(board)
 
 def main():
-    while True:
-        try:
-            skill_level = int(input("Enter the skill level of the robot (1-20, where 1 is the easiest and 20 is the strongest): "))
-            if 1 <= skill_level <= 20:
-                break
-            else:
-                print("Invalid skill level. Please enter a number between 1 and 20.")
-        except ValueError:
-            print("Invalid input. Please enter a valid number between 1 and 20.")
-
     stockfish = Stockfish(r"C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\stockfish-windows-x86-64-modern\stockfish\stockfish-windows-x86-64-modern.exe")
 
-    empty_board = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\empty_board.jpg')
-    all_nodes, board, game_move, numb_pieces = calibration(empty_board)
+    mp_drawing, mp_holistic, cap, holistic = hand_detection.setupVideo()
+    emptyBoard = hand_detection.GetEmptyBoard(cap)
+    all_nodes, board, game_move, numb_pieces = calibration(emptyBoard)
+    startMove = hand_detection.GetStartingBoard(cap)
 
-    move0 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\starting_position.jpg')
-    move1 = cv2.imread(r'C:\Users\16134\OneDrive\Documents\Learning\Hardware\Raspberry Pi\Chess Robot Arm\capture_test_images\move1.jpg')
+    try: 
+        while True:
+            endMove = hand_detection.GetNextImage(cap, holistic, mp_drawing, mp_holistic)  
+            detected_move, board, game_move = start_end_moves(startMove, endMove, all_nodes, board, numb_pieces, game_move)
+            if check_if_game_ended(board) == True:
+                break
+            else:
+                print_board(board, detected_move, game_move)
+                logger.debug(f"Move {game_move} (Human): {detected_move}")
+                robot_move, board, game_move = stockfish_make_move(stockfish, skill_level, board, detected_move, game_move)
+                logger.debug(f"Move {game_move} (Robot): {robot_move}")
+                if check_if_game_ended(board) == True:
+                    break
+                else:
+                    print_board(board, robot_move, game_move)
+                    coordinates_list = find_coordinates(robot_move, board)
 
-    move = []
-    move.append(move0)
-    move.append(move1)
+                    for coordinates in coordinates_list:
+                        logger.debug("Coordinates are: " + str(coordinates))
+                        matlab_communication.send_message(matlab_client_socket, coordinates)
+                        joint_angles = matlab_communication.receive_message(matlab_client_socket)
+                        logger.debug("Joint angles are " + joint_angles)
+                        matlab_communication.send_message(rpi_client_socket, joint_angles)
 
-    for i in range(len(move) - 1):        
-        detected_move, board, game_move = start_end_moves(move[i], move[i+1], all_nodes, board, numb_pieces, game_move)
-        if check_if_game_ended(board) == True:
-            break
-        else:
-            print_board(board, detected_move, game_move)
-            logger.debug(f"Move {game_move}: {detected_move}")
-            robot_move, board, game_move = stockfish_make_move(stockfish, skill_level, board, detected_move, game_move)
-            print_board(board, robot_move, game_move)
-            coordinates_list = find_coordinates(robot_move, board)
+                        while True:
+                            robot_status = matlab_communication.receive_message(rpi_client_socket)
+                            if robot_status == 'done':
+                                break
+                    logger.info("Robot has made its move")
+                    startMove = endMove
+        
+    except KeyboardInterrupt:
+        print("Script Interrupted")
 
-            for coordinates in coordinates_list:
-                logger.debug("Coordinates are: " + str(coordinates))
-                matlab_communication.send_message(matlab_client_socket, coordinates)
-                joint_angles = matlab_communication.receive_message(matlab_client_socket)
-                logger.debug("Joint angles are " + joint_angles)
-                matlab_communication.send_message(rpi_client_socket, joint_angles)
-
-                while True:
-                    robot_status = matlab_communication.receive_message(rpi_client_socket)
-                    if robot_status == 'done':
-                        break
-            print("Robot has made its move")
-    
-    print("Game has no more moves")
-    exit_program()
+    finally:
+        exit_program()
 
 if __name__ == "__main__":
     main()
